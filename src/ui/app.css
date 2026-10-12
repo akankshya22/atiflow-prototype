@@ -67,8 +67,8 @@ img { display: block; }
 .hint { bottom: 76px; left: 50%; transform: translateX(-50%); padding: 8px 14px; font-size: 12px; background: rgba(15,27,36,.88); color: #e2e8f0; border: 0; }
 /* minimap */
 .minimap { top: 16px; right: 16px; width: 196px; overflow: hidden; } .minimap header { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--border-secondary); } .minimap canvas { display: block; width: 196px; height: 110px; cursor: crosshair; }
-/* bottom bar: AI search centred, zoom bottom-right */
-.cmd { left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 340px)); bottom: 16px; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 10px; }
+/* bottom bar (Workflow Builder; the Live Floor puts it in .mapfoot) */
+.cmd { left: 16px; right: 168px; bottom: 16px; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 10px; }
 .cmd .ai { width: 32px; height: 32px; border-radius: 50%; background: #e8f7f5; color: #0f766e; display: grid; place-items: center; font-size: 14px; }
 .zoom { right: 16px; bottom: 16px; width: 132px; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 7px; font-size: 12px; font-weight: 500; }
 /* fleet list (floating over the map, draggable by its header) */
@@ -113,7 +113,7 @@ img { display: block; }
   .livebody { flex-direction: column; } .side { width: auto; border-left: 0; border-top: 1px solid var(--border-secondary); flex: 0 0 45%; }
   .fleet { left: 8px; right: 8px; width: auto; top: auto; bottom: 68px; max-height: 45%; transform: none !important; } .fleet header { cursor: default; }
   .livebody:has(.side) .fleet { display: none; }   /* a robot card is open below the map: give the small map back */
-  .cmd { left: 8px; right: 8px; width: auto; transform: none; bottom: 8px; } .zoom { display: none; }
+  .mapfoot { left: 8px; right: 8px; bottom: 8px; } .zoom { display: none; }
   .zonebar { bottom: 68px; left: auto; right: 8px; } .hint { bottom: 68px; max-width: 90%; text-align: center; }
 }
 
@@ -127,7 +127,12 @@ img { display: block; }
 .info-list button:hover { background: #e8f7f5; } .info-list em { margin-left: auto; font-style: normal; color: var(--text-placeholder); } .info-list .empty { padding: 8px; color: var(--text-placeholder); font-size: 12px; }
 .kv b { word-break: break-word; font-size: 13px; }
 /* ---------- map key ---------- */
-.legend { right: 16px; bottom: 76px; width: 268px; padding: 8px 12px 10px; font-size: 12px; }
+.mapfoot { position: absolute; left: 16px; right: 16px; bottom: 16px; z-index: 6; display: flex; align-items: center; gap: 12px; pointer-events: none; }
+.mapfoot > * { pointer-events: auto; } .mapfoot > .float { position: relative; inset: auto; transform: none; }
+.mapfoot .cmd { flex: 1; width: auto; min-width: 0; }
+.legend { flex: none; height: 48px; display: flex; align-items: center; padding: 0 14px; font-size: 12px; }
+.legend .lg-head { gap: 12px; padding: 0; width: auto; }
+.lg-pop { position: absolute; right: 0; bottom: calc(100% + 8px); width: 268px; padding: 10px 12px; }
 .lg-head { display: flex; justify-content: space-between; width: 100%; border: 0; background: none; padding: 2px 0 6px; font-weight: 700; font-size: 12px; }
 .lg { display: flex; align-items: center; gap: 8px; padding: 2px 0; } .lg small { margin-left: auto; color: var(--text-placeholder); font-size: 10px; }
 .lg .lane { width: 22px; height: 4px; border-radius: 2px; position: relative; } .lg .lane::after { content: ''; position: absolute; right: -2px; top: -3px; border: 5px solid transparent; border-left: 7px solid inherit; border-left-color: inherit; }

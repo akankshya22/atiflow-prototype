@@ -135,15 +135,16 @@ export function StationPanel() {
 }
 
 export function MapLegend() {
-  const violations = useApp((s) => s.violations); const traffic = useApp((s) => s.traffic); const fleets = useApp((s) => s.fleets); const [open, setOpen] = useState(true);
+  const violations = useApp((s) => s.violations); const traffic = useApp((s) => s.traffic); const fleets = useApp((s) => s.fleets); const [open, setOpen] = useState(false);
   const zs = Object.values(traffic); const occ = zs.filter((z) => z.occupants.length).length, wait = zs.reduce((a, z) => a + z.waiting.length, 0);
-  return <div className="float legend"><button className="lg-head" onClick={() => setOpen(!open)}>Map key <span>{open ? '–' : '+'}</span></button>
-    {open && <>
+  // sits in the map footer; the key opens upwards so the footer stays one line
+  return <div className="float legend"><button className="lg-head" aria-expanded={open} onClick={() => setOpen(!open)}>Map key <span>{open ? '–' : '+'}</span></button>
+    {open && <div className="float lg-pop">
       {fleets.map((f) => <div className="lg" key={f.id}><i className="lane" style={{ background: f.color }} />{f.name} lanes <small>→ one way</small></div>)}
       <div className="lg"><i className="lane" style={{ background: SHARED_COLOR }} />Shared map area <small>both fleets</small></div>
       <div className="lg"><i className="sq tz" />Traffic zone <small>wait if occupied</small></div>
       <div className="lg"><i className="sq fz" />Forbidden zone <small>never entered</small></div>
       <div className="lg"><i className="pin" />Station <small>STA-1xx</small></div>
       <div className="lg-stats"><span>Traffic zones: <b>{occ}</b> occupied · <b>{wait}</b> waiting</span><span className={violations ? 'bad' : 'good'}>Rule violations: <b>{violations}</b></span></div>
-    </>}</div>;
+    </div>}</div>;
 }
