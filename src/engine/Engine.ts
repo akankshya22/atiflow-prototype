@@ -21,7 +21,7 @@ export class Engine {
   private controls: OrbitControls; private clock = new THREE.Clock(); private raf = 0;
   private site!: SiteLayout; private nav!: NavGraph; private world!: CollisionWorld;
   private robots = new Map<string, RobotVis>(); private robotRoot = new THREE.Group();
-  private layerGroups: Record<LayerKey, THREE.Object3D[]> = { robots: [], routes: [], stations: [], zones: [], labels: [], equipment: [], alerts: [], pointmap: [], lidar: [] };
+  private layerGroups: Record<LayerKey, THREE.Object3D[]> = { robots: [], routes: [], stations: [], zones: [], labels: [], equipment: [], alerts: [], pointmap: [], lidar: [], flat: [] };
   /** URL of the site's 2D LiDAR point map (tools/pointmap); fetched the first time the `pointmap` layer is switched on. */
   pointmapUrl: string | null = null; private pointmapState: 'none' | 'loading' | 'ready' = 'none';
   private zoneMeshes: { zone: Zone; mesh: THREE.Mesh; edge: THREE.LineLoop }[] = [];
@@ -117,6 +117,22 @@ export class Engine {
       eq.setColorAt(i, col.set(KIND_COLOR[e.kind] ?? 0x9aa9a5));
     });
     eq.castShadow = eq.receiveShadow = true; this.scene.add(eq); this.layerGroups.equipment.push(eq);
+
+    // flat 2D map: walls and equipment as footprints on the floor (no height, no scan points), shown by the "2D map" view
+    const flatWalls = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x3f4d49 }), site.walls.length);
+    site.walls.forEach((w, i) => {
+      const dx = w.b[0] - w.a[0], dy = w.b[1] - w.a[1], L = Math.hypot(dx, dy), th = Math.max(w.t, 0.14);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.atan2(dy, dx));
+      m4.compose(new THREE.Vector3(...toScene((w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2, 0.05)), q, new THREE.Vector3(L + th, 0.02, th)); flatWalls.setMatrixAt(i, m4);
+    });
+    const flatEq = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xd3dbd8 }), site.equipment.length); const eqEdges: number[] = [];
+    site.equipment.forEach((e, i) => {
+      m4.compose(new THREE.Vector3(...toScene(e.x, e.y, 0.04)), new THREE.Quaternion(), new THREE.Vector3(e.w, 0.02, e.d)); flatEq.setMatrixAt(i, m4);
+      const x0 = e.x - e.w / 2, x1 = e.x + e.w / 2, y0 = e.y - e.d / 2, y1 = e.y + e.d / 2; const c = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+      c.forEach((p, k) => { const n = c[(k + 1) % 4]; eqEdges.push(...toScene(p[0], p[1], 0.06), ...toScene(n[0], n[1], 0.06)); });
+    });
+    const flatEdges = new THREE.LineSegments(new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(eqEdges, 3)), new THREE.LineBasicMaterial({ color: 0x8a9893 }));
+    this.scene.add(flatWalls, flatEq, flatEdges); this.layerGroups.flat.push(flatWalls, flatEq, flatEdges);
 
     // zones
     for (const z of site.zones) {
@@ -243,7 +259,12 @@ export class Engine {
   home() {
     store.getState().setZone(null); store.getState().select(null); store.getState().exitToView();
     const t = this.homeTarget.clone(), d = this.homePos.distanceTo(t);   // whole floor, seen the way the current view looks at it
-    this.flyTo(this.mode === 'top' ? new THREE.Vector3(t.x, d, t.z + 0.001) : this.mode === 'map' ? t.clone().add(new THREE.Vector3(0, d * Math.cos(0.8), d * Math.sin(0.8))) : this.homePos.clone(), t);
+    if (this.mode === 'top') {   // overhead: fit the whole floor in the canvas
+      const B = this.site.bounds, asp = this.camera.aspect || 1, tan = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const h = Math.max(B.maxY - B.minY, (B.maxX - B.minX) / asp) * 0.6 / tan;   // 0.5 = edge to edge, the rest is margin
+      this.flyTo(new THREE.Vector3(t.x, h, t.z + 0.001), t); return;
+    }
+    this.flyTo(this.mode === 'map' ? t.clone().add(new THREE.Vector3(0, d * Math.cos(0.8), d * Math.sin(0.8))) : this.homePos.clone(), t);
   }
   zoomBy(f: number) { const o = this.camera.position.clone().sub(this.controls.target).multiplyScalar(f); const L = THREE.MathUtils.clamp(o.length(), this.controls.minDistance, this.controls.maxDistance); this.camera.position.copy(this.controls.target).add(o.setLength(L)); }
   focusZone(id: string) {

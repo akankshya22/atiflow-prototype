@@ -24,7 +24,7 @@ const activeRuleAlerts = new Set<string>();
 export const store = createStore<AppState>((set, get) => ({
   site: null, nav: null, rules: null, fleets: [], fleetId: 'all', navSel: 'live', robots: {}, traffic: {}, violations: 0, events: [], selectedId: null, selectedStationId: null, activeZoneId: null,
   cameraMode: 'orbit', view: '3d', query: '', paused: false,
-  layers: { robots: true, routes: true, stations: true, zones: true, labels: true, equipment: true, alerts: true, pointmap: false, lidar: false },
+  layers: { robots: true, routes: true, stations: true, zones: true, labels: true, equipment: true, alerts: true, pointmap: false, lidar: false, flat: false },
   setSite: (site, nav) => set({ site, nav, rules: new RulesIndex(nav, site), fleets: nav.fleets }),
   ingest: (batch) => {
     const { rules, robots: prev } = get(); const robots = { ...prev }; const added: AppEvent[] = [];

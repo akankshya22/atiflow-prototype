@@ -30,7 +30,7 @@ export function LiveFloorPage() {
       adapter.onTelemetry((b) => { store.getState().ingest(b); eng.updateRobots(b); }); adapter.connect(); if (import.meta.env.DEV) Object.assign(window, { __adapter: adapter });  // dev-only: lets tests inject faults
     })();
     return () => { dead = true; adapter?.disconnect(); eng.dispose(); handle.engine = null;
-      store.setState({ selectedId: null, selectedStationId: null, activeZoneId: null, cameraMode: 'orbit', view: '3d', layers: { ...store.getState().layers, pointmap: false, lidar: false, equipment: true, zones: true }, navSel: 'live', fleetId: 'all', query: '', robots: {}, traffic: {}, events: [] }); };   // clean slate for the next sign-in
+      store.setState({ selectedId: null, selectedStationId: null, activeZoneId: null, cameraMode: 'orbit', view: '3d', layers: { ...store.getState().layers, pointmap: false, lidar: false, flat: false, equipment: true, zones: true }, navSel: 'live', fleetId: 'all', query: '', robots: {}, traffic: {}, events: [] }); };   // clean slate for the next sign-in
   }, []);
   useEffect(() => { handle.engine?.applyFilter(fleetId, q); }, [fleetId, q]);
   const sel = useApp((s) => s.selectedId); const selStation = useApp((s) => s.selectedStationId);

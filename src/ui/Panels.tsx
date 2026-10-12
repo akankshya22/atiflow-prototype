@@ -23,7 +23,7 @@ const CAMERA_ONLY: { id: 'walk' | 'follow'; label: string; hint: string }[] = [
   { id: 'walk', label: 'Walk', hint: 'First person on the floor' }, { id: 'follow', label: 'Follow', hint: 'Chase the selected robot' },
 ];
 export type PanelKey = 'fleet' | 'legend';
-/** The one map control: a View menu (2D point map, 2D plan, 2.5D map, 3D, LiDAR 3D, Walk, Follow) that also shows / hides the Fleet list, Map key and Zones, plus Home. */
+/** The one map control: a View menu (2D point map, 2D map, 2.5D map, 3D, LiDAR 3D, Walk, Follow) that also shows / hides the Fleet list, Map key and Zones, plus Home. */
 export function MapToolbar({ panels, onPanels }: { panels: Record<PanelKey, boolean>; onPanels: (p: Record<PanelKey, boolean>) => void }) {
   const mode = useApp((s) => s.cameraMode); const view = useApp((s) => s.view); const zones = useApp((s) => s.layers.zones); const fleetId = useApp((s) => s.fleetId);
   const count = useApp((s) => Object.values(s.robots).filter((r) => fleetId === 'all' || r.fleetId === fleetId).length);

@@ -48,4 +48,4 @@ export interface TelemetryAdapter {
 }
 
 export type CameraMode = 'orbit' | 'top' | 'map' | 'walk' | 'follow';   // map = 2.5D tilted map (Google Maps style)
-export type LayerKey = 'robots' | 'routes' | 'stations' | 'zones' | 'labels' | 'equipment' | 'alerts' | 'pointmap' | 'lidar';
+export type LayerKey = 'robots' | 'routes' | 'stations' | 'zones' | 'labels' | 'equipment' | 'alerts' | 'pointmap' | 'lidar' | 'flat';
