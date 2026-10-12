@@ -1,16 +1,17 @@
 import { describe, it, expect } from 'vitest';
-import { seedFleets, newFleetWorkflow } from '../src/features/workflow-builder/model/seed';
+import { blankWorkflow, isBlankDraft, seedWorkflows } from '../src/features/workflow-builder/model/seed';
 import { createNode } from '../src/features/workflow-builder/model/factory';
 import { insertNode, removeNode, moveNode, updateField, locate, countNodes, placementProblem } from '../src/features/workflow-builder/model/tree';
 import { publishProblem } from '../src/features/workflow-builder/model/validate';
 import { parsePrompt, applySteps } from '../src/features/workflow-builder/model/parsePrompt';
 import { NODE_TYPES, PALETTE } from '../src/features/workflow-builder/model/registry';
 
-const fresh = () => newFleetWorkflow().nodes;
+const seedOf = (fleet: string) => Object.values(seedWorkflows()).find((w) => w.fleet === fleet)!.nodes;
+const fresh = () => blankWorkflow('Test Fleet').nodes;
 
 describe('workflow tree rules', () => {
   it('seed fleets match the reference: 11 + 8 main nodes, Line Side counts 13 with branches', () => {
-    const f = seedFleets(); expect(f['Line Side Fleet'].nodes.length).toBe(11); expect(f['Assembly Fleet'].nodes.length).toBe(8); expect(countNodes(f['Line Side Fleet'].nodes)).toBe(13);
+    const f = Object.values(seedWorkflows()); const by = (n: string) => f.find((w) => w.fleet === n)!; expect(by('Line Side Fleet').nodes.length).toBe(11); expect(by('Assembly Fleet').nodes.length).toBe(8); expect(countNodes(by('Line Side Fleet').nodes)).toBe(13);
   });
   it('inserts between Start and End, never before Start or after End', () => {
     let n = fresh(); n = insertNode(n, createNode('wait'), 'main', 0).nodes; expect(n.map((x) => x.t)).toEqual(['start', 'wait', 'end']);
@@ -48,15 +49,15 @@ describe('publish validation', () => {
   it('needs at least one step', () => { expect(publishProblem(fresh())?.title).toMatch(/at least one step/); });
   it('rejects an empty If Logic branch, accepts a valid flow', () => {
     const l = createNode('logic'); l.br!.o = []; expect(publishProblem(insertNode(fresh(), l, 'main').nodes)?.title).toMatch(/branch is empty/);
-    expect(publishProblem(seedFleets()['Line Side Fleet'].nodes)).toBeNull();
+    expect(publishProblem(seedOf('Line Side Fleet'))).toBeNull();
   });
 });
 
 describe('Ati AI prompt parser', () => {
   it('builds the documented example flow', () => {
-    const steps = parsePrompt('material 003, if quantity greater than 10 go to S103, otherwise S102, confirm, drop at STA-104');
+    const steps = parsePrompt('material 1003, if quantity greater than 10 go to S103, otherwise S102, confirm, drop at STA-104', ['DCP-1001', 'DCP-1003']);
     expect(steps.map((s) => s.t)).toEqual(['material', 'logic', 'confirm', 'station']);
-    expect(steps[0].f.code).toBe('Material-003'); expect(steps[1].f.cond).toBe('Greater than'); expect(steps[1].f.qty).toBe('10');
+    expect(steps[0].f.code).toBe('DCP-1003'); expect(steps[1].f.cond).toBe('Greater than'); expect(steps[1].f.qty).toBe('10');
     expect(steps[1].br!.t[0].f.station).toEqual(['S103']); expect(steps[1].br!.o[0].f.station).toEqual(['S102']);
     expect(steps[3].f).toMatchObject({ action: 'Drop Off', station: 'STA-104' });
   });
@@ -65,15 +66,50 @@ describe('Ati AI prompt parser', () => {
     expect(s[0].f.time).toBe('00:02:00'); expect(s[1].f.op).toBe('Barcode Scan'); expect(parsePrompt('hello there')).toEqual([]);
   });
   it('applySteps keeps Start/End and replaces the middle', () => {
-    const base = seedFleets()['Assembly Fleet'].nodes; const out = applySteps(base, parsePrompt('pick up at STA-101'));
+    const base = seedOf('Assembly Fleet'); const out = applySteps(base, parsePrompt('pick up at STA-101'));
     expect(out[0].id).toBe(base[0].id); expect(out.at(-1)!.t).toBe('end'); expect(out.length).toBe(3);
   });
 });
 
-describe('fleet names', () => {
-  it('are unique ignoring case and get the Fleet suffix', async () => {
+describe('fleets and workflows in the store', () => {
+  it('fleet names are unique ignoring case and get the Fleet suffix', async () => {
     const { wfStore } = await import('../src/features/workflow-builder/model/store');
-    expect(wfStore.getState().createFleet('Warehouse')).toBe(true); expect(Object.keys(wfStore.getState().fleets)).toContain('Warehouse Fleet');
+    expect(wfStore.getState().createFleet('Warehouse')).toBe(true); expect(wfStore.getState().fleetNames).toContain('Warehouse Fleet');
     expect(wfStore.getState().createFleet('warehouse fleet')).toBe(false); expect(wfStore.getState().createFleet('   ')).toBe(false);
   });
+  it('a new workflow has no fleet; picking one names it <fleet>_workflow_<n> with the next free number', async () => {
+    const { wfStore, selectFleet } = await import('../src/features/workflow-builder/model/store');
+    const s = wfStore.getState(); const id = s.startWorkflow(); expect(wfStore.getState().workflows[id]).toMatchObject({ fleet: null, name: '' }); expect(selectFleet(wfStore.getState())).toBe('');
+    wfStore.getState().assignFleet('Line Side Fleet'); expect(wfStore.getState().workflows[id].name).toBe('Line Side Fleet_workflow_2');   // _1 exists in the seed
+    wfStore.getState().assignFleet('Assembly Fleet'); expect(wfStore.getState().workflows[id].name).toBe('Assembly Fleet_workflow_2');
+    expect(wfStore.getState().renameWorkflow('  ')).toBe(false); expect(wfStore.getState().renameWorkflow('My flow')).toBe(true); wfStore.getState().assignFleet('Line Side Fleet'); expect(wfStore.getState().workflows[id].name).toBe('My flow');   // a user's name is kept
+  });
+  it('starting again reuses an untouched fleet-less draft but never a built one', async () => {
+    const { wfStore } = await import('../src/features/workflow-builder/model/store');
+    const a = wfStore.getState().startWorkflow(); const b = wfStore.getState().startWorkflow(); expect(b).toBe(a);
+    const named = wfStore.getState().startWorkflow('Line Side Fleet'); expect(named).not.toBe(a); expect(isBlankDraft(wfStore.getState().workflows[named])).toBe(false);
+    wfStore.getState().openWorkflow(a); wfStore.getState().assignFleet('Line Side Fleet'); expect(wfStore.getState().startWorkflow()).not.toBe(a);
+  });
+  it('leaving a workflow that is neither saved nor published discards it; Save Draft or Publish keeps it', async () => {
+    const { wfStore } = await import('../src/features/workflow-builder/model/store');
+    const a = wfStore.getState().startWorkflow('Assembly Fleet'); wfStore.getState().discardUnsaved(); expect(wfStore.getState().workflows[a]).toBeUndefined(); expect(wfStore.getState().current).toBeNull();
+    const b = wfStore.getState().startWorkflow('Assembly Fleet'); wfStore.getState().saveDraft(); wfStore.getState().discardUnsaved(); expect(wfStore.getState().workflows[b]).toMatchObject({ saved: true });
+    wfStore.getState().openWorkflow(b); wfStore.getState().addNode('wait'); wfStore.getState().publish(); expect(wfStore.getState().workflows[b]).toMatchObject({ published: true, saved: true });
+    const c = wfStore.getState().startWorkflow(); wfStore.getState().saveDraft(); wfStore.getState().discardUnsaved(); expect(wfStore.getState().workflows[c]).toBeUndefined();   // no fleet -> cannot be saved
+    const seed = Object.values(wfStore.getState().workflows).find((w) => w.id === 'w-line-side-1')!; wfStore.getState().openWorkflow(seed.id); wfStore.getState().discardUnsaved(); expect(wfStore.getState().workflows[seed.id]).toBeDefined();   // seeds are saved
+  });
+  it('nothing can be edited before a workflow is open', async () => {
+    const { wfStore } = await import('../src/features/workflow-builder/model/store');
+    wfStore.setState({ current: null }); wfStore.getState().addNode('wait'); expect(wfStore.getState().nodes()).toEqual([]);
+  });
+});
+
+import { defaultWorkflowName, workflowNameError } from '../src/features/workflow-builder/model/names';
+describe('workflow names', () => {
+  it('default is <fleet>_workflow_<n> with the next free number', () => {
+    expect(defaultWorkflowName('Line Side Fleet')).toBe('Line Side Fleet_workflow_1');
+    expect(defaultWorkflowName('Line Side Fleet', ['Line Side Fleet_workflow_1', 'line side fleet_workflow_2'])).toBe('Line Side Fleet_workflow_3');
+    expect(defaultWorkflowName('A', ['Custom name'])).toBe('A_workflow_1');
+  });
+  it('an empty name is refused', () => { expect(workflowNameError('  ')).toBeTruthy(); expect(workflowNameError('x')).toBe(''); });
 });

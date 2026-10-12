@@ -1,0 +1,40 @@
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { SearchLg, Edit05 } from '@untitledui/icons';
+import { Badge } from '@/components/base/badges/badges';
+import { Button } from '@/components/base/buttons/button';
+import { Input } from '@/components/base/input/input';
+import { RowMenu } from '@/components/data/RowMenu';
+import { DataTable, type Column } from '@/components/data/DataTable';
+import { isKept } from '@/features/workflow-builder/model/seed';
+import { useWorkflow, wfStore, workflowsOfFleet } from '@/features/workflow-builder/model/store';
+import { workflowSummary, type WorkflowRow } from '../model/workflows';
+import { copy } from '../copy';
+
+/** Workflows tab: the fleet's workflow(s) read straight from the Workflow Builder. Rows and "Make New Workflow" open the builder on this fleet. */
+export function WorkflowsPanel({ fleet }: { fleet: string }) {
+  const navigate = useNavigate(); const workflows = useWorkflow((s) => s.workflows); const [text, setText] = useState(''); const [sel, setSel] = useState<Set<string>>(new Set());
+  const rows: WorkflowRow[] = useMemo(() => workflowsOfFleet(workflows, fleet).filter(isKept).map(workflowSummary), [fleet, workflows]);
+  const shown = rows.filter((r) => !text.trim() || [r.name, r.materials.join(' '), r.trigger].some((x) => x.toLowerCase().includes(text.trim().toLowerCase())));
+  const open = (r: WorkflowRow) => navigate(`/configurator/workflows/${r.id}`);
+  const make = () => navigate(`/configurator/workflows/${wfStore.getState().startWorkflow(fleet)}`);
+  const t = copy.workflows;
+  const columns: Column<WorkflowRow>[] = [
+    { id: 'workflow', header: t.columns.workflow, cell: (r) => <div className="min-w-0"><p className="truncate text-sm font-medium text-primary">{r.name}</p><p className="text-sm text-tertiary">{t.nodes(r.nodes)}</p></div> },
+    { id: 'materials', header: t.columns.materials, cell: (r) => (r.materials.length ? r.materials.join(', ') : t.none) },
+    { id: 'trigger', header: t.columns.trigger, cell: (r) => <Badge size="sm" type="pill-color" color="gray">{r.trigger}</Badge> },
+    { id: 'status', header: t.columns.status, headClassName: 'w-28', className: 'w-28', cell: (r) => <span className="text-primary">{r.published ? t.active : t.draft}</span> },
+    { id: 'menu', header: '', headClassName: 'w-12', className: 'w-12 text-right', cell: (r) => <RowMenu label={t.rowMenu} onAction={() => open(r)} items={[{ id: 'open', label: t.open, icon: Edit05 }]} /> },
+  ];
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-primary">{t.title}</h2>
+        <div className="flex flex-wrap gap-3"><Input className="w-60" size="sm" icon={SearchLg} aria-label={t.search} placeholder={t.search} value={text} onChange={setText} /><Button size="sm" color="primary" onPress={make}>{t.make}</Button></div>
+      </div>
+      {rows.length === 0 ? <p className="rounded-xl border border-dashed border-primary p-10 text-center text-sm text-tertiary">{t.empty}</p>
+        : shown.length === 0 ? <p className="p-10 text-center text-sm text-tertiary">{t.noMatch(text)}</p>
+        : <div className="overflow-auto rounded-xl border border-secondary"><DataTable plain label={t.title} rows={shown} rowKey={(r) => r.id} columns={columns} onRowAction={open} selection={{ selected: sel, onChange: setSel }} minWidth={560} /><p className="border-t border-secondary px-5 py-3 text-sm text-tertiary">{t.showing(shown.length, rows.length)}</p></div>}
+    </div>
+  );
+}

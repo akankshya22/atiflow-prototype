@@ -195,7 +195,7 @@ export const Tab = ({ label, children, badge, icon: Icon, className, ...otherPro
                         {typeof children === "function" ? children(state) : children || label}
 
                         {/* Badge */}
-                        {badge && (
+                        {badge !== undefined && badge !== "" && (
                             <Badge
                                 size="sm"
                                 type={showPillColorBadge ? "pill-color" : "modern"}

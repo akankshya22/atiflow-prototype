@@ -1,29 +1,12 @@
 import type { FC, ReactNode } from 'react';
+import type { FieldDef, FieldValue } from '@/components/form/types';
 
 export type DeviceKindId = 'robot' | 'hardware';
-export type FieldValue = string | string[];
+export type { FieldDef, FieldValue } from '@/components/form/types';
 export type DeviceStatus = 'online' | 'offline';
 
 /** One stored robot / hardware record. `values` is keyed by FieldDef.key; `values.name` is the unique name, `values.fleet` the fleet ('' = unassigned). */
 export interface Device { status: DeviceStatus; values: Record<string, FieldValue> }
-
-/** One form field. The Add modal and the detail page both render from the same list, so a field is declared exactly once per device kind. */
-export interface FieldDef {
-  key: string; label: string;
-  control: 'text' | 'secret' | 'select' | 'checks' | 'fleet';
-  options?: string[]; placeholder?: string;
-  required?: boolean; unique?: boolean;
-  /** Small badge beside the label, e.g. "Ati Exclusive". */
-  tag?: string;
-  /** Add modal: omitted = not asked, 'half' = two per row. */
-  modal?: 'full' | 'half';
-  /** Detail page: omitted = not shown. */
-  detail?: boolean | { label?: string; display?: 'text' | 'badge' | 'badges'; editable?: boolean };
-  /** Position in the detail grid (lower first); fields without one keep declaration order after the ordered ones. */
-  detailOrder?: number;
-  /** Value used when the modal does not ask for it (new records). */
-  initial?: FieldValue;
-}
 
 export interface EmptyStateDef { headline: string; description: string; hint?: string; prompt?: string; quickPicks?: { label: string; value: string; icon: FC<{ className?: string }> }[] }
 

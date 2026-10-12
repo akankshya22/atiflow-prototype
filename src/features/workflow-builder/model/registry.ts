@@ -2,7 +2,6 @@ import type { IconId, NodeTypeId, NodeTypeSpec } from './types';
 
 export const STATIONS = ['STA-100', 'STA-101', 'STA-102', 'STA-103', 'STA-104', 'SA-101'];
 export const STATION_NUMS = ['S100', 'S101', 'S102', 'S103', 'S104'];
-export const MATERIAL_CODES = ['Material-001', 'Material-002', 'Material-003', 'MAT-01'];
 
 /**
  * THE extension point: a node type is one entry here (fields, colours, defaults). Cards, palette, parser and simulator read this registry.
@@ -14,13 +13,13 @@ export const NODE_TYPES: Record<NodeTypeId, NodeTypeSpec> = {
     { key: 'robot', label: 'Robot Type', opts: ['Sherpa XT Lite', 'Sherpa XT', 'Sherpa Hitch'] },
     { key: 'request', label: 'Request Type', opts: ['Request from Tablet', 'MES', 'Tablet', 'Call Button'] },
     { key: 'user', label: 'User ID', kind: 'multi', opts: ['USER-001', 'USER-002', 'USER-003', 'USER-004'] }] },
-  material: { label: 'Material', accent: '#eedcef', icon: 'keyframes', w: 224, defaults: { type: 'Material', code: 'Material-001', fromTablet: false, qty: '10' }, fields: [
+  material: { label: 'Material', accent: '#eedcef', icon: 'keyframes', w: 224, defaults: { type: 'Material', code: '', fromTablet: false, qty: '10' }, fields: [
     { key: 'type', label: 'Type', opts: ['Material', 'Kit', 'Spare Part'] },
-    { key: 'code', label: 'Code', opts: MATERIAL_CODES },
+    { key: 'code', label: 'Code', optsFrom: 'fleetMaterials' },
     { key: 'fromTablet', label: 'Select quantity from Tablet', kind: 'check' },
     { key: 'qty', label: 'Quantity', kind: 'input' }] },
-  logic: { label: 'If Logic', accent: '#d5dbfd', icon: 'keyframes', w: 245, defaults: { material: 'Material-003', station: 'S102', cond: 'Greater than', qty: '10' }, fields: [
-    { key: 'material', label: 'Material', opts: MATERIAL_CODES },
+  logic: { label: 'If Logic', accent: '#d5dbfd', icon: 'keyframes', w: 245, defaults: { material: '', station: 'S102', cond: 'Greater than', qty: '10' }, fields: [
+    { key: 'material', label: 'Material', optsFrom: 'fleetMaterials' },
     { key: 'station', label: 'Station', opts: STATION_NUMS },
     { key: 'cond', label: 'CONDITION', kind: 'cond', opts: ['Greater than', 'Less than', 'Equal to', 'Not equal to'] },
     { key: 'qty', label: 'Quantity', row: true, opts: ['5', '10', '20', '50', '100'] }] },

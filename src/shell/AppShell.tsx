@@ -9,12 +9,11 @@ import type { NavModel, SearchHit } from './types';
 interface Props {
   useNavModel: () => NavModel;
   searchPlaceholder: string; getHits: (q: string) => SearchHit[];
-  /** Replaces the topbar back/forward buttons (e.g. undo/redo). */
-  leading?: ReactNode; onAi?: () => void;
+  onAi?: () => void;
   children: ReactNode;
 }
 /** Common chrome for every signed-in page: sidebar (role label + account menu), topbar, mobile drawer. Pages only supply content + nav/search data. */
-export function AppShell({ useNavModel, searchPlaceholder, getHits, leading, onAi, children }: Props) {
+export function AppShell({ useNavModel, searchPlaceholder, getHits, onAi, children }: Props) {
   const user = useAuth((s) => s.user)!; const navigate = useNavigate();
   const [navOpen, setNavOpen] = useState(false); const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sb-collapsed') === '1');
   const logout = () => { authStore.getState().logout(); navigate('/login', { replace: true }); };
@@ -24,7 +23,7 @@ export function AppShell({ useNavModel, searchPlaceholder, getHits, leading, onA
         collapsed={collapsed} onToggle={() => setCollapsed((c) => { localStorage.setItem('sb-collapsed', c ? '0' : '1'); return !c; })} />
       {navOpen && <div className="scrim" onClick={() => setNavOpen(false)} />}
       <div className="main">
-        <Topbar onMenu={() => setNavOpen(true)} leading={leading} searchPlaceholder={searchPlaceholder} getHits={getHits} onAi={onAi} />
+        <Topbar onMenu={() => setNavOpen(true)} searchPlaceholder={searchPlaceholder} getHits={getHits} onAi={onAi} />
         {children}
       </div>
     </div>

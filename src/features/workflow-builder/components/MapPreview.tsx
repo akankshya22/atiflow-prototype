@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import { Map01, Minus } from '@untitledui/icons';
 import { ButtonUtility } from '@/components/base/buttons/button-utility';
 import { locate } from '../model/tree';
-import { useWorkflow, wfStore } from '../model/store';
+import { selectNodes, useWorkflow, wfStore } from '../model/store';
 import { HOME, MAP_H, MAP_W, ROBOT_SIZE, STATION_LABELS } from '../sim/geometry';
 import { simBus } from '../sim/runner';
 import { MapStatic } from '../assets/MapStatic';
@@ -17,7 +17,7 @@ const stationNums = (id: string | null) => { if (!id) return [] as string[]; con
 export function MapPreview({ mode, canvasRef, onClose }: { mode: 'float' | 'docked'; canvasRef?: RefObject<HTMLDivElement | null>; onClose: () => void }) {
   const card = useRef<HTMLDivElement>(null); const body = useRef<HTMLDivElement>(null); const robot = useRef<HTMLDivElement>(null);
   const trailDone = useRef<SVGPathElement>(null); const trailCur = useRef<SVGPathElement>(null); const [moved, setMoved] = useState<{ x: number; y: number } | null>(null);
-  const sim = useWorkflow((s) => s.sim); const selected = useWorkflow((s) => s.selected); const nodes = useWorkflow((s) => s.fleets[s.current].nodes);
+  const sim = useWorkflow((s) => s.sim); const selected = useWorkflow((s) => s.selected); const nodes = useWorkflow(selectNodes);
   const hl = useMemo(() => (sim.hlStation ? [sim.hlStation] : stationNums(selected)), [sim.hlStation, selected, nodes]);   // eslint-disable-line react-hooks/exhaustive-deps
   const running = sim.status === 'running';
 

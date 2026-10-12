@@ -6,9 +6,9 @@ const { robot, hardware } = KINDS;
 const filled = (kind: typeof robot, over: Record<string, string> = {}) => ({ ...blankValues(kind), name: 'Sherpa-09', hardwareId: 'HW-1234-09', apiKey: 'flow_api_x', ...over });
 
 describe('device registry (robots + hardware share one model)', () => {
-  it('seeds match the design: 8 robots on Line Side Fleet, 4 hardware items', () => {
+  it('seeds: 8 robots spread over two fleets (one unassigned), 4 hardware items', () => {
     expect(robot.seed).toHaveLength(8); expect(hardware.seed).toHaveLength(4);
-    expect(robot.seed.every((d) => d.values.fleet === 'Line Side Fleet' && d.status === 'online')).toBe(true);
+    expect(robot.seed.filter((d) => d.values.fleet === 'Line Side Fleet')).toHaveLength(5); expect(robot.seed.filter((d) => d.values.fleet === '')).toHaveLength(1); expect(robot.seed.every((d) => d.status === 'online')).toBe(true);
     expect(hardware.seed.map((d) => d.values.hwType)).toEqual(['Summon Button', 'Hooter', 'Ati Eye', 'Hooter']);
   });
   it('seed names and hardware ids are unique', () => {

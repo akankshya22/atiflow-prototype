@@ -12,6 +12,8 @@ export type ListKey = 'main' | string;
 export type FieldKind = 'select' | 'multi' | 'check' | 'input' | 'cond';
 export interface FieldSpec {
   key: string; label: string | ((n: WfNode) => string); kind?: FieldKind; opts?: string[];
+  /** Options come from outside the registry. `fleetMaterials` = materials assigned to the open fleet in Master Data. */
+  optsFrom?: 'fleetMaterials';
   /** Render label and control on one row. */
   row?: boolean;
   /** Overrides applied when the node sits inside a branch (e.g. Station uses S-numbers there). */
@@ -27,5 +29,9 @@ export interface NodeTypeSpec {
   fixed?: boolean;
   defaults?: Record<string, FieldValue>;
 }
-export interface FleetWorkflow { wf: string; nodes: WfNode[] }
-export interface Fleets { [name: string]: FleetWorkflow }
+/**
+ * One workflow. `fleet` is null until the user picks a fleet for a new workflow. `published`: set by Publish, cleared by any later edit.
+ * `saved`: set by Save Draft (or Publish). A workflow that is neither saved nor published is discarded when the user leaves it.
+ */
+export interface Workflow { id: string; name: string; fleet: string | null; nodes: WfNode[]; published?: boolean; saved?: boolean }
+export type Workflows = Record<string, Workflow>;

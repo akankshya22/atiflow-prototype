@@ -4,13 +4,15 @@ import { ButtonUtility } from '@/components/base/buttons/button-utility';
 import { Checkbox } from '@/components/base/checkbox/checkbox';
 import { Input } from '@/components/base/input/input';
 import { Select } from '@/components/base/select/select';
-import { wfStore } from '../model/store';
+import { useFleetMaterialCodes } from '@/features/master-data/model/selectors';
+import { selectFleet, useWorkflow, wfStore } from '../model/store';
 import type { FieldSpec, WfNode } from '../model/types';
 
-function FieldSelect({ value, opts, onChange, label, className }: { value: string; opts: string[]; onChange: (v: string) => void; label: string; className?: string }) {
-  const options = opts.includes(value) ? opts : [value, ...opts];
+function FieldSelect({ value, opts, onChange, label, className, placeholder }: { value: string; opts: string[]; onChange: (v: string) => void; label: string; className?: string; placeholder?: string }) {
+  // a value that is no longer offered (e.g. a material removed from the fleet) stays visible so the workflow is not silently changed
+  const options = !value || opts.includes(value) ? opts : [value, ...opts];
   return (
-    <Select size="sm" aria-label={label} className={className} selectedKey={value} onSelectionChange={(k) => onChange(String(k))} items={options.map((o) => ({ id: o, label: o }))}>
+    <Select size="sm" aria-label={label} className={className} placeholder={placeholder} selectedKey={value || null} onSelectionChange={(k) => onChange(String(k))} items={options.map((o) => ({ id: o, label: o }))}>
       {(item) => <Select.Item {...item} />}
     </Select>
   );
@@ -27,7 +29,9 @@ function QtyInput({ node, field }: { node: WfNode; field: string }) {
 export function FieldControl({ node, spec, inBranch }: { node: WfNode; spec: FieldSpec; inBranch: boolean }) {
   const fd = inBranch && spec.branch ? { ...spec, ...spec.branch } : spec;
   const label = typeof fd.label === 'function' ? fd.label(node) : fd.label; const value = node.f[fd.key]; const set = wfStore.getState().setField;
-  const opts = fd.opts ?? [];
+  const materialCodes = useFleetMaterialCodes(useWorkflow(selectFleet));
+  const opts = fd.optsFrom === 'fleetMaterials' ? materialCodes : (fd.opts ?? []);
+  const emptyHint = fd.optsFrom === 'fleetMaterials' && opts.length === 0 ? 'No materials assigned' : undefined;
 
   if (fd.kind === 'check') return (
     <div className="wf-field row"><span className="wf-label">{label}</span>
@@ -46,7 +50,7 @@ export function FieldControl({ node, spec, inBranch }: { node: WfNode; spec: Fie
     );
   }
   const cur = Array.isArray(value) ? value[0] : (value as string);
-  const control = <FieldSelect label={label} value={cur} opts={opts} onChange={(v) => set(node.id, fd.key, v)} className={fd.row ? 'min-w-[84px]' : 'w-full'} />;
+  const control = <FieldSelect label={label} value={cur} opts={opts} placeholder={emptyHint ?? 'Select'} onChange={(v) => set(node.id, fd.key, v)} className={fd.row ? 'min-w-[84px]' : 'w-full'} />;
   return fd.row
     ? <div className="wf-field row"><span className="wf-label">{label}</span>{control}</div>
     : <div className="wf-field">{fd.kind === 'cond' ? <span className="wf-clabel">{label}</span> : <span className="wf-label">{label}</span>}{control}</div>;

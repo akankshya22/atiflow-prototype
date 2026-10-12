@@ -13,7 +13,7 @@ const ICON = { warning: AlertCircle, error: AlertCircle, success: CheckCircle, i
 const COLOR = { warning: 'warning', error: 'error', success: 'success', info: 'brand' } as const;
 
 export function AppToaster() {
-  return <Toaster position="top-center" offset={{ top: 72 }} mobileOffset={{ top: 64, left: 12, right: 12 }} />;
+  return <Toaster position="bottom-right" expand={false} visibleToasts={4} gap={12} offset={{ bottom: 24, right: 24 }} mobileOffset={{ bottom: 16, left: 12, right: 12 }} />;
 }
 
 function Notice({ title, description, tone, onClose }: { title: string; description?: string; tone: Tone; onClose: () => void }) {

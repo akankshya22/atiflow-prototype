@@ -1,0 +1,6 @@
+export type { FleetMap, MapStation } from '@/features/maps/model/types';
+
+/** Materials stocked at one station of the fleet's map. One group per station. */
+export interface StationGroup { id: string; stationId: string; name: string; codes: string[] }
+/** Everything the fleet page stores about a fleet itself (robots, hardware and materials live in their own features). */
+export interface FleetProfile { mapId: string | null; groups: StationGroup[] }

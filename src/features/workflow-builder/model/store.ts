@@ -1,23 +1,42 @@
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
 import { notify } from '@/ui/toast';
+import { fleetMaterialCodes } from '@/features/master-data/model/selectors';
 import { createNode, syncIds } from './factory';
 import { applySteps, parsePrompt } from './parsePrompt';
-import { newFleetWorkflow, seedFleets } from './seed';
+import { defaultWorkflowName, workflowNameError } from './names';
+import { blankWorkflow, isBlankDraft, isKept, SEED_FLEETS, seedWorkflows } from './seed';
 import { insertNode, locate, moveNode, removeNode, updateField, type Problem } from './tree';
 import { publishProblem } from './validate';
-import type { FieldValue, Fleets, ListKey, NodeTypeId, WfNode } from './types';
+import type { FieldValue, ListKey, NodeTypeId, WfNode, Workflow, Workflows } from './types';
 
-const KEY = 'atiflow.workflows.v1';
+const KEY = 'atiflow.workflows.v4', KEY_V3 = 'atiflow.workflows.v3', KEY_V2 = 'atiflow.workflows.v2';
 export interface SimState { status: 'idle' | 'running' | 'done'; step: string; progress: number; currentId: string | null; taken: Record<string, 't' | 'o'>; visited: string[]; hlStation: string | null }
 export const SIM_IDLE: SimState = { status: 'idle', step: '', progress: 0, currentId: null, taken: {}, visited: [], hlStation: null };
 interface History { undo: string[]; redo: string[] }
 
 export interface WfState {
-  fleets: Fleets; current: string; selected: string | null; justAdded: string | null; hist: Record<string, History>; sim: SimState;
+  /** Fleets that exist (a fleet can have many workflows). */
+  fleetNames: string[]; workflows: Workflows;
+  /** Id of the workflow open in the builder, null before any. */
+  current: string | null; selected: string | null; justAdded: string | null; hist: Record<string, History>; sim: SimState;
   nodes(): WfNode[];
   select(id: string | null): void;
-  switchFleet(name: string): void; createFleet(name: string): boolean;
+  /** Open an existing workflow in the builder. */
+  openWorkflow(id: string): void;
+  /** Open a new workflow: with a fleet (named <fleet>_workflow_<n>) or without one (the user picks it on the canvas). Reuses an untouched fleet-less draft. Returns its id. */
+  startWorkflow(fleet?: string | null): string;
+  /** Put the open workflow in a fleet; it gets that fleet's next default name unless the user already named it. */
+  assignFleet(fleet: string): void;
+  createFleet(name: string): boolean;
+  /** Rename a fleet everywhere in the workflow store (list + each workflow's fleet). Workflow names are NOT changed. */
+  renameFleet(from: string, to: string): void;
+  /** Keep the open workflow as a draft (it would otherwise be discarded when left). */
+  saveDraft(): void;
+  /** Remove the open workflow if it was never saved or published (called when the user leaves it). */
+  discardUnsaved(): void;
+  /** Rename the open workflow. Returns false (with a toast) for an empty name. */
+  renameWorkflow(name: string): boolean;
   addNode(t: NodeTypeId | 'aiot', key?: ListKey, at?: number): void;
   removeNode(id: string): void; moveNode(id: string, key: ListKey, at: number): void;
   setField(id: string, key: string, value: FieldValue, idx?: number): void;
@@ -27,36 +46,86 @@ export interface WfState {
   setSim(patch: Partial<SimState>): void;
 }
 
-function load(): { fleets: Fleets; current: string } {
-  try { const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null'); if (raw?.fleets && raw.current in raw.fleets) { Object.values(raw.fleets as Fleets).forEach((f) => syncIds(f.nodes)); return raw; } } catch { /* fall through */ }
-  const fleets = seedFleets(); return { fleets, current: 'Line Side Fleet' };
+const EMPTY: WfNode[] = [];
+/** Nodes of the open workflow (stable empty array when none is open). */
+export const selectNodes = (s: WfState) => (s.current ? (s.workflows[s.current]?.nodes ?? EMPTY) : EMPTY);
+/** Fleet of the open workflow ('' while none is chosen). */
+export const selectFleet = (s: WfState) => (s.current ? (s.workflows[s.current]?.fleet ?? '') : '');
+export const workflowsOfFleet = (workflows: Workflows, fleet: string) => Object.values(workflows).filter((w) => w.fleet === fleet);
+
+type Saved = { fleetNames: string[]; workflows: Workflows; current: string | null };
+function load(): Saved {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+    const keep = (ws: Workflows): Workflows => Object.fromEntries(Object.entries(ws).filter(([, w]) => isKept(w)));       // unsaved workflows do not survive a reload
+    if (raw?.workflows && Array.isArray(raw.fleetNames)) { const workflows = keep(raw.workflows); Object.values(workflows).forEach((w) => syncIds(w.nodes)); return { fleetNames: raw.fleetNames, workflows, current: null }; }
+    const v3 = JSON.parse(localStorage.getItem(KEY_V3) ?? 'null');         // v3: no saved flag; built workflows with a fleet count as saved
+    if (v3?.workflows && Array.isArray(v3.fleetNames)) {
+      const workflows = Object.fromEntries(Object.entries(v3.workflows as Workflows).filter(([, w]) => w.fleet && w.nodes.length > 2).map(([id, w]) => [id, { ...w, saved: true }]));
+      Object.values(workflows).forEach((w) => syncIds(w.nodes)); return { fleetNames: v3.fleetNames, workflows, current: null };
+    }
+    const old = JSON.parse(localStorage.getItem(KEY_V2) ?? 'null');       // v2: one workflow per fleet, keyed by fleet name
+    if (old?.fleets) {
+      const workflows: Workflows = {}; Object.entries(old.fleets as Record<string, { wf?: string; nodes: WfNode[]; published?: boolean }>).forEach(([fleet, f], i) => {
+        syncIds(f.nodes); const id = `w-v2-${i}`; workflows[id] = { id, fleet, nodes: f.nodes, published: f.published, saved: true, name: !f.wf || f.wf === 'Workflow Canvas' ? defaultWorkflowName(fleet) : f.wf };
+      });
+      return { fleetNames: Object.keys(old.fleets), workflows, current: null };
+    }
+  } catch { /* fall through */ }
+  return { fleetNames: SEED_FLEETS, workflows: seedWorkflows(), current: null };
 }
 const boot = load();
 
 export const wfStore = createStore<WfState>((set, get) => {
   const problem = (p: Problem | undefined) => { if (p) notify.warning(p.title, p.body || undefined, 'wf-problem'); return !!p; };
-  /** Apply an edit to the current fleet's nodes and record undo history. No-op edits are ignored. */
+  const fleetOf = () => selectFleet(get());
+  const patch = (id: string, change: Partial<Workflow>) => set({ workflows: { ...get().workflows, [id]: { ...get().workflows[id], ...change } } });
+  /** Apply an edit to the open workflow's nodes and record undo history. No-op edits are ignored. */
   const commit = (next: WfNode[]) => {
-    const { fleets, current, hist } = get(); const before = JSON.stringify(fleets[current].nodes); if (JSON.stringify(next) === before) return false;
+    const { workflows, current, hist } = get(); if (!current) return false; const before = JSON.stringify(workflows[current].nodes); if (JSON.stringify(next) === before) return false;
     const h = hist[current] ?? { undo: [], redo: [] };
-    set({ fleets: { ...fleets, [current]: { ...fleets[current], nodes: next } }, hist: { ...hist, [current]: { undo: [...h.undo, before].slice(-100), redo: [] } } }); return true;
+    set({ workflows: { ...workflows, [current]: { ...workflows[current], nodes: next, published: false } }, hist: { ...hist, [current]: { undo: [...h.undo, before].slice(-100), redo: [] } } }); return true;
   };
   return {
-    fleets: boot.fleets, current: boot.current, selected: null, justAdded: null, hist: {}, sim: SIM_IDLE,
-    nodes: () => get().fleets[get().current].nodes,
+    fleetNames: boot.fleetNames, workflows: boot.workflows, current: boot.current, selected: null, justAdded: null, hist: {}, sim: SIM_IDLE,
+    nodes: () => selectNodes(get()),
     select: (selected) => set({ selected }),
-    switchFleet: (name) => set({ current: name, selected: null, sim: SIM_IDLE }),
+    openWorkflow(id) { if (get().workflows[id] && get().current !== id) set({ current: id, selected: null, sim: SIM_IDLE }); },
+    startWorkflow(fleet = null) {
+      const reuse = fleet === null ? Object.values(get().workflows).find(isBlankDraft) : undefined;
+      const w = reuse ?? blankWorkflow(fleet, workflowsOfFleet(get().workflows, fleet ?? '').map((x) => x.name));
+      set({ workflows: { ...get().workflows, [w.id]: w }, current: w.id, selected: null, sim: SIM_IDLE }); return w.id;
+    },
+    assignFleet(fleet) {
+      const { current, workflows } = get(); if (!current) return; const w = workflows[current]; if (w.fleet === fleet) return;
+      const others = workflowsOfFleet(workflows, fleet).filter((x) => x.id !== current).map((x) => x.name);
+      const wasDefault = !w.name || (w.fleet !== null && w.name.startsWith(`${w.fleet}_workflow_`));
+      patch(current, { fleet, name: wasDefault ? defaultWorkflowName(fleet, others) : w.name }); set({ sim: SIM_IDLE });
+    },
+    saveDraft() { const { current } = get(); if (!current || !get().workflows[current].fleet) return; patch(current, { saved: true }); notify.success('Draft saved', 'Find it under the fleet’s Workflows tab.', 'wf-saved'); },
+    discardUnsaved() {
+      const { current, workflows } = get(); if (!current || !workflows[current] || isKept(workflows[current])) return;
+      const { [current]: _gone, ...rest } = workflows; set({ workflows: rest, current: null, selected: null, sim: SIM_IDLE });
+    },
+    renameWorkflow(name) {
+      const e = workflowNameError(name); if (e) { notify.warning(e, undefined, 'wf-name'); return false; }
+      const { current, workflows } = get(); if (!current) return false; if (workflows[current].name !== name.trim()) patch(current, { name: name.trim() }); return true;
+    },
+    renameFleet(from, to) { set({ fleetNames: get().fleetNames.map((f) => (f === from ? to : f)), workflows: Object.fromEntries(Object.entries(get().workflows).map(([id, w]) => [id, w.fleet === from ? { ...w, fleet: to } : w])) }); },
     createFleet(name) {
       let n = name.trim();
       if (!n) { notify.warning('Give the fleet a name first.', 'For example: Warehouse Fleet', 'fleet-name'); return false; }
       if (!/fleet$/i.test(n)) n += ' Fleet';
-      if (Object.keys(get().fleets).some((k) => k.toLowerCase() === n.toLowerCase())) { notify.warning(`${n} already exists.`, 'Pick a different name.', 'fleet-name'); return false; }   // names are unique ignoring case
-      set({ fleets: { ...get().fleets, [n]: newFleetWorkflow() }, current: n, selected: null, sim: SIM_IDLE });
-      notify.success(`${n} created`, 'Drag nodes from the palette, or describe the workflow to Ati AI.', 'fleet-created'); return true;
+      if (get().fleetNames.some((k) => k.toLowerCase() === n.toLowerCase())) { notify.warning(`${n} already exists.`, 'Pick a different name.', 'fleet-name'); return false; }   // names are unique ignoring case
+      set({ fleetNames: [...get().fleetNames, n] });
+      notify.success(`${n} created`, 'Assign robots, hardware and materials, then build its workflows.', 'fleet-created'); return true;
     },
     addNode(t, key = 'main', at) {
+      if (!get().current) return;
       if (t === 'aiot') { problem({ title: 'AIoT has no node card in the Figma file yet', body: 'Only the palette tile is designed, so it can’t be added to the canvas.' }); return; }
-      const node = createNode(t, t === 'station' && key !== 'main' ? { station: ['S101'] } : undefined);
+      const first = fleetMaterialCodes(fleetOf())[0] ?? '';      // new Material / If Logic nodes start on the fleet's first assigned material
+      const node = createNode(t, t === 'station' && key !== 'main' ? { station: ['S101'] } : t === 'material' ? { code: first } : undefined);
+      if (t === 'logic') node.f.material = first;
       const r = insertNode(get().nodes(), node, key, at); if (problem(r.problem)) return;
       commit(r.nodes); set({ selected: node.id, justAdded: node.id });
     },
@@ -68,27 +137,31 @@ export const wfStore = createStore<WfState>((set, get) => {
       const next = options.find((o) => !vals.includes(o)); if (!next) { notify.warning('Every option is already added.', '', 'wf-problem'); return; }
       commit(updateField(get().nodes(), id, key, [...vals, next]));
     },
-    undo() { const { current, hist, fleets } = get(); const h = hist[current]; const s = h?.undo.at(-1); if (!h || s === undefined) return;
-      set({ fleets: { ...fleets, [current]: { ...fleets[current], nodes: JSON.parse(s) } }, hist: { ...hist, [current]: { undo: h.undo.slice(0, -1), redo: [...h.redo, JSON.stringify(fleets[current].nodes)] } }, selected: null }); },
-    redo() { const { current, hist, fleets } = get(); const h = hist[current]; const s = h?.redo.at(-1); if (!h || s === undefined) return;
-      set({ fleets: { ...fleets, [current]: { ...fleets[current], nodes: JSON.parse(s) } }, hist: { ...hist, [current]: { redo: h.redo.slice(0, -1), undo: [...h.undo, JSON.stringify(fleets[current].nodes)] } }, selected: null }); },
+    undo() { const { current, hist, workflows } = get(); if (!current) return; const h = hist[current]; const s = h?.undo.at(-1); if (!h || s === undefined) return;
+      set({ workflows: { ...workflows, [current]: { ...workflows[current], nodes: JSON.parse(s) } }, hist: { ...hist, [current]: { undo: h.undo.slice(0, -1), redo: [...h.redo, JSON.stringify(workflows[current].nodes)] } }, selected: null }); },
+    redo() { const { current, hist, workflows } = get(); if (!current) return; const h = hist[current]; const s = h?.redo.at(-1); if (!h || s === undefined) return;
+      set({ workflows: { ...workflows, [current]: { ...workflows[current], nodes: JSON.parse(s) } }, hist: { ...hist, [current]: { redo: h.redo.slice(0, -1), undo: [...h.undo, JSON.stringify(workflows[current].nodes)] } }, selected: null }); },
     buildFromPrompt(text) {
-      const steps = parsePrompt(text);
-      if (!steps.length) { notify.error('Ati AI couldn’t find any steps', 'Try: “material 003, if quantity greater than 10 go to S103, otherwise S102, confirm, drop at STA-104”', 'ai'); return false; }
+      const steps = parsePrompt(text, fleetMaterialCodes(fleetOf()));
+      if (!steps.length) { notify.error('Ati AI couldn’t find any steps', `Try: “material ${fleetMaterialCodes(fleetOf())[0] ?? 'code'}, if quantity greater than 10 go to S103, otherwise S102, confirm, drop at STA-104”`, 'ai'); return false; }
       commit(applySteps(get().nodes(), steps)); set({ justAdded: steps[0].id });
       notify.success(`Built ${steps.length} step${steps.length > 1 ? 's' : ''} from your description`, 'Use the back arrow at the top to undo.', 'ai'); return true;
     },
     publish() {
+      const { current } = get(); if (!current) return;
       const p = publishProblem(get().nodes()); if (p) { notify.warning(p.title, p.body, 'publish'); return; }
-      notify.success(`Workflow published to ${get().current}`, `${get().nodes().length} nodes are live. Use Simulate to watch a test run on the map.`, 'publish');
+      patch(current, { published: true, saved: true });
+      notify.success(`Workflow published to ${fleetOf()}`, `${get().nodes().length} nodes are live. Use Simulate to watch a test run on the map.`, 'publish');
     },
     setSim: (patch) => set({ sim: { ...get().sim, ...patch } }),
   };
 });
 export const useWorkflow = <T,>(sel: (s: WfState) => T) => useStore(wfStore, sel);
+/** Names of all fleets (re-renders only when the list changes). */
+export const useFleetNames = () => useWorkflow((s) => s.fleetNames.join('|')).split('|').filter(Boolean);
 
 // persist workflows (not history/sim) shortly after any change
 let timer: ReturnType<typeof setTimeout> | undefined;
-wfStore.subscribe((s, p) => { if (s.fleets === p.fleets && s.current === p.current) return; clearTimeout(timer); timer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify({ fleets: s.fleets, current: s.current })); } catch { /* no storage (tests / private mode) */ } }, 250); });
+wfStore.subscribe((s, p) => { if (s.workflows === p.workflows && s.fleetNames === p.fleetNames && s.current === p.current) return; clearTimeout(timer); timer = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify({ fleetNames: s.fleetNames, workflows: s.workflows, current: s.current })); } catch { /* no storage (tests / private mode) */ } }, 250); });
 
 if (import.meta.env.DEV && typeof window !== 'undefined') Object.assign(window, { __wf: wfStore });   // dev-only handle for console testing

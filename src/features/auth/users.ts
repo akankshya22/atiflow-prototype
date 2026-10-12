@@ -9,6 +9,6 @@ import meera from './avatars/meera.png';
  */
 export const USERS: UserRecord[] = [
   { username: 'arjun', password: '1234', role: 'supervisor',   name: 'Arjun Singh', title: 'Lead Supervisor', avatar: arjun },
-  { username: 'kavin', password: '1234', role: 'configurator', name: 'Kavin',       title: 'Configurator',    avatar: kavin },
-  { username: 'meera', password: '1234', role: 'configurator', name: 'Meera',       title: 'Configurator',    avatar: meera },
+  { username: 'kavin', password: '1234', role: 'configurator', name: 'Kavin',       title: 'Ati Support Engineer',    avatar: kavin },
+  { username: 'meera', password: '1234', role: 'configurator', name: 'Meera',       title: 'Systems Engineer',    avatar: meera },
 ];

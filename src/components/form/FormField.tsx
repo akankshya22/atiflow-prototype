@@ -4,7 +4,7 @@ import { Input } from '@/components/base/input/input';
 import { Label } from '@/components/base/input/label';
 import { Select } from '@/components/base/select/select';
 import { cx } from '@/utils/cx';
-import type { FieldDef, FieldValue } from '../model/types';
+import type { FieldDef, FieldValue } from './types';
 
 const UNASSIGNED = 'Unassigned';
 interface Props {
@@ -23,10 +23,10 @@ const BadgeBox = ({ items }: { items: string[] }) => (
 );
 
 /**
- * One form field, rendered from its FieldDef. The Add modal and the detail page use this same component, so an input looks
+ * One form field, rendered from its FieldDef. Add dialogs, detail pages and edit dialogs use this same component, so an input looks
  * and behaves identically everywhere (label + teal required star, optional tag, error text, dimmed when disabled).
  */
-export function DeviceField({ def, label = def.label, value, onChange, disabled, error, fleets, display = 'text', showTag }: Props) {
+export function FormField({ def, label = def.label, value, onChange, disabled, error, fleets, display = 'text', showTag }: Props) {
   const text = Array.isArray(value) ? value.join(', ') : value;
   let control;
   if (disabled && display !== 'text') control = <BadgeBox items={Array.isArray(value) ? value : value ? [value] : []} />;

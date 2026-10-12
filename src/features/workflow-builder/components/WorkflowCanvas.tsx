@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { ZoomBar } from '@/ui/ZoomBar';
 import { useBuilderDnd } from '../hooks/useBuilderDnd';
 import { useCamera, Z_MAX, Z_MIN } from '../hooks/useCamera';
-import { useWorkflow, wfStore } from '../model/store';
+import { selectNodes, useWorkflow, wfStore } from '../model/store';
 import { AiPromptBar } from './AiPromptBar';
 import { FlowCtx } from './FlowContext';
 import { FlowTree } from './FlowTree';
@@ -13,7 +13,7 @@ import { NodePalette } from './NodePalette';
 export function WorkflowCanvas({ mapOpen, setMapOpen, docked }: { mapOpen: boolean; setMapOpen: (v: boolean) => void; docked: boolean }) {
   const canvas = useRef<HTMLDivElement>(null); const inner = useRef<HTMLDivElement>(null);
   const cam = useCamera(canvas, inner); const dnd = useBuilderDnd({ canvasRef: canvas, flowRef: inner, getZoom: cam.getZoom, panBy: cam.panBy });
-  const nodes = useWorkflow((s) => s.fleets[s.current].nodes); const current = useWorkflow((s) => s.current); const justAdded = useWorkflow((s) => s.justAdded); const simCur = useWorkflow((s) => s.sim.currentId);
+  const nodes = useWorkflow(selectNodes); const current = useWorkflow((s) => s.current); const justAdded = useWorkflow((s) => s.justAdded); const simCur = useWorkflow((s) => s.sim.currentId);
 
   const lastFleet = useRef(current);
   useLayoutEffect(() => { if (lastFleet.current !== current) { lastFleet.current = current; cam.resetFit(); } cam.ensureFit(); }, [nodes, current]);   // a different fleet -> fit again (before paint); same fleet -> keep the view   // eslint-disable-line react-hooks/exhaustive-deps

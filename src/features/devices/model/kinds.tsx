@@ -12,11 +12,11 @@ const ADDONS = ['Auto-Hitch', 'Auto Un-hitch'];
 const HARDWARE_TYPES = Object.keys(HARDWARE_ICONS);
 const FLEET: FieldDef = { key: 'fleet', label: 'Assigned Fleet', control: 'fleet', detail: { editable: true } };
 
-const robot = (n: number): Device => ({
+const robot = (n: number, fleet: string): Device => ({
   status: 'online',
   values: {
     name: `AMR-${String(n).padStart(3, '0')}`, manufacturer: 'Ati Robotics', sherpaType: 'Tug 1.5T', hardwareId: `HW-2024-AMR-08${43 + n}`, apiKey: `sk-amr${String(n).padStart(3, '0')}-f8a3b2c1d4e5`,
-    addons: ['Auto-Hitch', 'Auto Un-hitch'], ip: `192.168.1.${43 + n}`, firmware: 'v3.2.1', lastCalibration: 'Sep 15, 2026', fleet: 'Line Side Fleet',
+    addons: ['Auto-Hitch', 'Auto Un-hitch'], ip: `192.168.1.${43 + n}`, firmware: 'v3.2.1', lastCalibration: 'Sep 15, 2026', fleet,
   },
 });
 const hw = (name: string, type: string, id: string, fleet: string, status: Device['status']): Device => ({ status, values: { name, manufacturer: 'Ati Robotics', hwType: type, hardwareId: id, apiKey: `sk-${id.toLowerCase()}-c4d9e2a7`, fleet } });
@@ -58,7 +58,7 @@ export const KINDS: Record<'robot' | 'hardware', DeviceKind> = {
     preview: () => ({ image: robotPicture('h-[137px] w-[160px] object-contain'), caption: 'Sherpa XT Lite' }),
     empty: { headline: 'Let’s add your first robot!', description: 'Register your AMRs to start assigning them to fleets, maps and workflows.', hint: 'Keep the Hardware ID and API key from the robot’s label handy.' },
     emptyIllustration: robotPicture('h-[111px] w-[200px] object-contain'),
-    seed: [1, 2, 3, 4, 5, 6, 7, 8].map(robot),
+    seed: [[1, 'Line Side Fleet'], [2, 'Line Side Fleet'], [3, 'Line Side Fleet'], [4, 'Line Side Fleet'], [5, 'Line Side Fleet'], [6, 'Assembly Fleet'], [7, 'Assembly Fleet'], [8, '']].map(([n, f]) => robot(n as number, f as string)),
   },
   hardware: {
     id: 'hardware', route: 'hardware', singular: 'Hardware', plural: 'Hardware',
@@ -77,7 +77,7 @@ export const KINDS: Record<'robot' | 'hardware', DeviceKind> = {
     emptyIllustration: <span className="flex flex-col items-center gap-1 text-secondary"><Cube01 className="size-20 stroke-1" /><CpuChip01 className="-my-3 size-16 stroke-1" /><Package className="size-20 stroke-1" /></span>,
     seed: [
       hw('Line 1 Summon', 'Summon Button', 'HW-2024-SMN-0101', 'Line Side Fleet', 'online'), hw('Line 5 Hooter', 'Hooter', 'HW-2024-HTR-0205', 'Line Side Fleet', 'online'),
-      hw('Line 5 Ati Eye', 'Ati Eye', 'HW-2024-EYE-0305', '', 'online'), hw('Line 4 Hooter', 'Hooter', 'HW-2024-HTR-0204', '', 'offline'),
+      hw('Line 5 Ati Eye', 'Ati Eye', 'HW-2024-EYE-0305', 'Assembly Fleet', 'online'), hw('Line 4 Hooter', 'Hooter', 'HW-2024-HTR-0204', '', 'offline'),
     ],
   },
 };
