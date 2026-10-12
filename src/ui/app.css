@@ -198,3 +198,13 @@ body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; touc
 /* configurator sidebar: inline "new fleet" form (hidden when the sidebar is collapsed) */
 .new-fleet { display: flex; gap: 6px; padding: 4px 4px 6px; } .new-fleet > div { flex: 1; min-width: 0; }
 .sidebar.collapsed .new-fleet { display: none; }
+
+/* Live Floor locate search: suggestions open upward from the bottom search bar */
+.loc-pop { position: absolute; left: 0; right: 0; bottom: calc(100% + 8px); background: #fff; border: 1px solid var(--border, #e5e5e5); border-radius: 12px; box-shadow: 0 12px 24px rgba(15, 23, 32, .14); padding: 6px; max-height: 320px; overflow-y: auto; z-index: 30; }
+.loc-pop > button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 6px 10px; border-radius: 8px; text-align: left; font-size: 13px; color: #404040; }
+.loc-pop > button.on { background: #f0faf8; }
+.loc-pop > button .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.loc-pop > button b { font-weight: 600; white-space: nowrap; }
+.loc-pop > button span { flex: 1; min-width: 0; color: #737373; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.loc-pop > button em { font-style: normal; font-size: 11px; font-weight: 600; color: #0f766e; background: #e8f7f5; border-radius: 999px; padding: 2px 8px; }
+.loc-pop .none { padding: 10px; font-size: 13px; color: #737373; }

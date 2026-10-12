@@ -5,16 +5,20 @@ import { toScene, fromScene } from '../core/coords';
 import type { CameraMode, LayerKey, NavGraph, RobotTelemetry, SiteLayout, Zone } from '../core/types';
 import { CollisionWorld } from './walk';
 import { labelSprite, dotSprite } from './labels';
-import { ROBOT_MODELS, DEFAULT_MODEL } from './robotMesh';
+import { ROBOT_MODELS, DEFAULT_MODEL, buildTrolley } from './robotMesh';
 import { RulesLayer, SHARED_COLOR } from './rulesLayer';
 import { STATE_COLOR, STATE_PULSE } from './stateStyle';
 
 const KIND_COLOR: Record<string, number> = { 'smt-machine': 0x7e9a94, equipment: 0x9aa9a5, workstation: 0xb4beba };
 const MUTED = 0xcfd5d3;
-const ROBOT_SCALE = 1.4;
+const ROBOT_SCALE = 1;   // true size: the simulator keeps real robot footprints apart, so the drawing must match them
 const EYE = 1.7;
 
-interface RobotVis { group: THREE.Group; light: THREE.Mesh; dot: THREE.Sprite; halo: THREE.Mesh; ring: THREE.Mesh; tgt: { x: number; y: number; th: number }; v: number; t?: RobotTelemetry; lightMat: THREE.MeshBasicMaterial }
+type Pose2 = { x: number; y: number; th: number };
+/** Smooth motion between telemetry ticks: each tick starts a new linear segment from where the robot is drawn now to the reported pose, lasting one tick interval. */
+interface Glide { from: Pose2; to: Pose2; t0: number; dur: number }
+interface RobotVis { group: THREE.Group; light: THREE.Mesh; dot: THREE.Sprite; halo: THREE.Mesh; ring: THREE.Mesh; tgt: Pose2; v: number; t?: RobotTelemetry; lightMat: THREE.MeshBasicMaterial;
+  glide: Glide; last: number; trolley: ReturnType<typeof buildTrolley>; tglide: Glide | null }
 
 export class Engine {
   readonly renderer: THREE.WebGLRenderer; readonly scene = new THREE.Scene(); readonly camera: THREE.PerspectiveCamera;
@@ -160,19 +164,31 @@ export class Engine {
     const inner = new THREE.Group(); inner.add(group); inner.scale.setScalar(ROBOT_SCALE);
     const root = new THREE.Group(); root.add(inner); root.userData.robotId = t.id;
     group.traverse((o) => { o.userData.robotId = t.id; });
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.07, 10, 48), new THREE.MeshBasicMaterial({ color: 0x14b8a6, transparent: true, opacity: 0.9, depthWrite: false })); halo.rotation.x = Math.PI / 2; halo.position.y = 0.1; halo.visible = false;
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.07, 10, 48), new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.8, depthWrite: false })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.1; ring.visible = false;
+    const halo = new THREE.Mesh(new THREE.TorusGeometry(1.05, 0.05, 10, 48), new THREE.MeshBasicMaterial({ color: 0x14b8a6, transparent: true, opacity: 0.9, depthWrite: false })); halo.rotation.x = Math.PI / 2; halo.position.y = 0.1; halo.visible = false;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.98, 0.05, 10, 48), new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.8, depthWrite: false })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.1; ring.visible = false;
     const dot = dotSprite('#14b8a6'); dot.position.y = 2.4; dot.renderOrder = 10; dot.userData.robotId = t.id;
     root.add(halo, ring, dot); this.robotRoot.add(root); this.layerGroups.robots.push(root);
-    r = { group: root, light, dot, halo, ring, tgt: { x: t.pose.x, y: t.pose.y, th: t.pose.theta }, v: 0, lightMat: light.material as THREE.MeshBasicMaterial };
+    const trolley = buildTrolley(); trolley.group.visible = false; trolley.group.traverse((o) => { o.userData.robotId = t.id; }); this.robotRoot.add(trolley.group);
+    const p0 = { x: t.pose.x, y: t.pose.y, th: t.pose.theta }, now = performance.now() / 1000;
+    r = { group: root, light, dot, halo, ring, tgt: p0, v: 0, lightMat: light.material as THREE.MeshBasicMaterial, glide: { from: p0, to: p0, t0: now, dur: 0.1 }, last: now, trolley, tglide: null };
     const [x, , z] = toScene(t.pose.x, t.pose.y); root.position.set(x, 0, z); root.rotation.y = t.pose.theta; this.robots.set(t.id, r); return r;
   }
   updateRobots(batch: RobotTelemetry[]) {
     for (const t of batch) {
       const r = this.ensure(t); r.t = t; r.tgt = { x: t.pose.x, y: t.pose.y, th: t.pose.theta }; r.v = t.speed;
+      const now = performance.now() / 1000, dur = THREE.MathUtils.clamp(now - r.last, 0.05, 0.5); r.last = now;
+      r.glide = { from: this.drawnPose(r.glide, now), to: r.tgt, t0: now, dur };
+      if (t.trailer) { const to = { x: t.trailer.x, y: t.trailer.y, th: t.trailer.theta }; r.tglide = { from: r.tglide && r.trolley.group.visible ? this.drawnPose(r.tglide, now) : to, to, t0: now, dur }; r.trolley.setCargo(t.payload?.kind ?? 'Material', t.payload?.qty ?? 3); }
+      else r.tglide = null;
       const c = STATE_COLOR[t.state]; r.lightMat.color.set(c); (r.dot.material as THREE.SpriteMaterial).color.set(c === '#cbd5e1' ? '#ffffff' : '#ffffff'); this.tintDot(r, c);
     }
     const s = store.getState(); this.applyFilter(s.fleetId, s.query);
+  }
+  /** Where a glide puts the robot at time `now` (s). Jumps over 5 m (teleports, first fix) are not animated. */
+  private drawnPose(g: Glide, now: number): Pose2 {
+    const k = Math.min(1, (now - g.t0) / g.dur); if (Math.hypot(g.to.x - g.from.x, g.to.y - g.from.y) > 5) return g.to;
+    const d = ((g.to.th - g.from.th + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    return { x: g.from.x + (g.to.x - g.from.x) * k, y: g.from.y + (g.to.y - g.from.y) * k, th: g.from.th + d * k };
   }
   private tintDot(r: RobotVis, c: string) { const m = r.dot.material as THREE.SpriteMaterial; if (r.dot.userData.c !== c) { r.dot.userData.c = c; const n = dotSprite(c); m.map = n.material.map; m.needsUpdate = true; } }
   applyFilter(fleetId: string, query: string) {
@@ -275,8 +291,8 @@ export class Engine {
   }
   flyToSite(x: number, y: number) { const t = new THREE.Vector3(...toScene(x, y, 0)); const d = Math.max(30, this.camera.position.distanceTo(this.controls.target) * 0.6); this.flyTo(new THREE.Vector3(t.x - d * 0.3, d * 0.8, t.z + d * 0.55), t); }
   focusStation(id: string) {
-    const p = this.rules.stationPos.get(id); if (!p) return; const d = 16;
-    this.flyTo(this.mode === 'top' ? new THREE.Vector3(p.x, 30, p.z + 0.001) : new THREE.Vector3(p.x - d * 0.4, d * 0.9, p.z + d * 0.8), p.clone(), 0.9);
+    const p = this.rules.stationPos.get(id); if (!p) return; const d = 16; if (this.mode === 'walk' || this.mode === 'follow') store.getState().exitToView();
+    this.flyTo(this.mode === 'top' ? new THREE.Vector3(p.x, 30, p.z + 0.001) : this.mode === 'map' ? new THREE.Vector3(p.x, 18, p.z + 13) : new THREE.Vector3(p.x - d * 0.4, d * 0.9, p.z + d * 0.8), p.clone(), 0.9);
   }
   private updateIncoming() {
     const id = store.getState().selectedStationId; const sp = id ? this.rules.stationPos.get(id) : null; if (!id || !sp) { this.incoming.visible = false; return; }
@@ -284,8 +300,9 @@ export class Engine {
     this.incoming.geometry.setFromPoints(pts); this.incoming.visible = pts.length > 0;
   }
   focusRobot(id: string) {
-    const r = this.robots.get(id); if (!r) return; store.getState().select(id);
-    const p = r.group.position.clone(); this.flyTo(new THREE.Vector3(p.x - 14, 16, p.z + 14), p, 0.9);
+    const r = this.robots.get(id); if (!r) return; store.getState().select(id); if (this.mode === 'walk') store.getState().exitToView();
+    const p = r.group.position.clone();   // keep the look of the current view: overhead in 2D, tilted in 2.5D, 3D otherwise
+    this.flyTo(this.mode === 'top' ? new THREE.Vector3(p.x, 26, p.z + 0.001) : this.mode === 'map' ? new THREE.Vector3(p.x, 18, p.z + 13) : new THREE.Vector3(p.x - 14, 16, p.z + 14), p, 0.9);
   }
 
   // ---------------------------------------------------------------- input
@@ -360,9 +377,10 @@ export class Engine {
     if (!this.site) { this.renderer.render(this.scene, this.camera); return; }
     // robots: dead-reckon + smooth toward telemetry
     this.robots.forEach((r) => {
-      const [tx, , tz] = toScene(r.tgt.x, r.tgt.y); const g = r.group; const k = 1 - Math.exp(-dt * 8);
-      g.position.x += (tx - g.position.x) * k; g.position.z += (tz - g.position.z) * k;
-      let d = ((r.tgt.th - g.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI; g.rotation.y += d * k;
+      const now = performance.now() / 1000, pose = this.drawnPose(r.glide, now); const g = r.group;
+      const [tx, , tz] = toScene(pose.x, pose.y); g.position.set(tx, 0, tz); g.rotation.y = pose.th;
+      const tg = r.tglide; r.trolley.group.visible = !!tg && g.visible && g.children[0].visible;
+      if (tg && r.trolley.group.visible) { const tp = this.drawnPose(tg, now); const [qx, , qz] = toScene(tp.x, tp.y); r.trolley.group.position.set(qx, 0, qz); r.trolley.group.rotation.y = tp.th; }
       const st = r.t?.state ?? 'idle'; const pu = STATE_PULSE[st]; const s = pu ? 0.5 + 0.5 * Math.sin(time * pu * 6) : 0;
       r.ring.visible = st === 'blocked' || st === 'error' || !!r.t?.alerts?.some((a) => a.severity === 'critical'); if (r.ring.visible) { (r.ring.material as THREE.MeshBasicMaterial).opacity = 0.3 + 0.55 * s; r.ring.scale.setScalar(1 + 0.12 * s); }
       if (r.halo.visible) { (r.halo.material as THREE.MeshBasicMaterial).opacity = 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(time * 3.2)); r.halo.scale.setScalar(1 + 0.1 * (0.5 + 0.5 * Math.sin(time * 3.2))); }

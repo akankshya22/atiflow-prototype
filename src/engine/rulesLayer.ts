@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { toScene } from '../core/coords';
+import { junctionCurve, LaneGraph, smoothCorners } from '../core/lanes';
 import type { NavGraph, SiteLayout, StationType } from '../core/types';
 import type { TrafficZoneState } from '../core/rules';
 import { labelSprite, liveLabel, stripeTexture } from './labels';
@@ -24,16 +25,25 @@ export class RulesLayer {
     const color = new Map(this.nav.fleets.map((f) => [f.id, f.color])); const groups = new Map<string, { segs: [number, number, number, number][]; arrows: [number, number, number][]; color: string }>();
     for (const l of this.nav.lanes) {
       const key = l.fleets.length > 1 ? 'shared' : l.fleets[0]; const g = groups.get(key) ?? groups.set(key, { segs: [], arrows: [], color: key === 'shared' ? SHARED_COLOR : color.get(key) ?? '#64748b' }).get(key)!;
-      let acc = 2;
-      for (let i = 0; i + 1 < l.geom.length; i++) {
-        const [ax, ay] = l.geom[i], [bx, by] = l.geom[i + 1]; const len = Math.hypot(bx - ax, by - ay); if (len < 0.05) continue; g.segs.push([ax, ay, bx, by]);
+      let acc = 2; const geom = smoothCorners(l.geom.map(([x, y]) => ({ x, y })), l.geom.map(() => l.id)).pts.map((q) => [q.x, q.y]);   // rounded like the path robots drive
+      for (let i = 0; i + 1 < geom.length; i++) {
+        const [ax, ay] = geom[i], [bx, by] = geom[i + 1]; const len = Math.hypot(bx - ax, by - ay); if (len < 0.05) continue; g.segs.push([ax, ay, bx, by]);
         for (; acc < len; acc += 5) g.arrows.push([ax + ((bx - ax) * acc) / len, ay + ((by - ay) * acc) / len, Math.atan2(by - ay, bx - ax)]); acc -= len;
       }
+    }
+    // connectors: the rounded curve a robot actually drives from the end of one lane into the next, so routes read as one connected network
+    const graph = new LaneGraph(this.nav); const deg = new Map<string, Set<string>>();
+    for (const l of this.nav.lanes) { (deg.get(l.from) ?? deg.set(l.from, new Set()).get(l.from)!).add(l.to); (deg.get(l.to) ?? deg.set(l.to, new Set()).get(l.to)!).add(l.from); }
+    for (const l of this.nav.lanes) for (const m of graph.out.get(l.to) ?? []) {
+      if (!m.fleets.some((f) => l.fleets.includes(f)) || (m.to === l.from && deg.get(l.to)!.size > 1)) continue;   // U-turns only at dead ends
+      const shared = l.fleets.length > 1 && m.fleets.length > 1, key = shared ? 'shared' : (m.fleets.length === 1 ? m.fleets[0] : l.fleets[0]);
+      const g = groups.get(key) ?? groups.set(key, { segs: [], arrows: [], color: key === 'shared' ? SHARED_COLOR : color.get(key) ?? '#64748b' }).get(key)!;
+      const c = junctionCurve(l, m); for (let i = 0; i + 1 < c.length; i++) if (Math.hypot(c[i + 1].x - c[i].x, c[i + 1].y - c[i].y) > 0.02) g.segs.push([c[i].x, c[i].y, c[i + 1].x, c[i + 1].y]);
     }
     const arrowGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute([0.55, 0, 0, -0.3, 0, -0.34, -0.3, 0, 0.34], 3)); arrowGeo.setIndex([0, 1, 2]); arrowGeo.computeVertexNormals();
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
     for (const [key, g] of groups) {
-      const lines = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.02, 0.14), new THREE.MeshBasicMaterial({ color: g.color, transparent: true, opacity: 0.85 }), g.segs.length);
+      const lines = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.02, 0.14), new THREE.MeshBasicMaterial({ color: lighten(g.color, 0.12) }), g.segs.length);   // opaque, so overlapping pieces at joints do not show darker spots
       g.segs.forEach(([ax, ay, bx, by], i) => { q.setFromAxisAngle(up, Math.atan2(by - ay, bx - ax)); m.compose(new THREE.Vector3(...toScene((ax + bx) / 2, (ay + by) / 2, 0.07)), q, new THREE.Vector3(Math.hypot(bx - ax, by - ay) + 0.14, 1, 1)); lines.setMatrixAt(i, m); });
       const arrows = new THREE.InstancedMesh(arrowGeo, new THREE.MeshBasicMaterial({ color: lighten(g.color, 0.15), side: THREE.DoubleSide }), g.arrows.length);
       g.arrows.forEach(([x, y, a], i) => { q.setFromAxisAngle(up, a); m.compose(new THREE.Vector3(...toScene(x, y, 0.09)), q, new THREE.Vector3(1, 1, 1)); arrows.setMatrixAt(i, m); });

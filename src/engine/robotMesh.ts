@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { FOOTPRINTS, TROLLEY } from '../core/footprint';
 
 export interface RobotModelDef { label: string; footprint: [number, number]; build(): { group: THREE.Group; light: THREE.Mesh } }
 
@@ -78,7 +79,50 @@ function sherpa(L: number, W: number, opts: { tug?: boolean } = {}) {
 }
 
 export const ROBOT_MODELS: Record<string, RobotModelDef> = {
-  'sherpa-xt-lite': { label: 'Sherpa XT Lite', footprint: [1.2, 0.85], build: () => sherpa(1.2, 0.85) },
-  'sherpa-tug': { label: 'Sherpa Tug', footprint: [1.45, 0.9], build: () => sherpa(1.45, 0.9, { tug: true }) },
+  'sherpa-xt-lite': { label: 'Sherpa XT Lite', footprint: FOOTPRINTS['sherpa-xt-lite'], build: () => sherpa(...FOOTPRINTS['sherpa-xt-lite']) },
+  'sherpa-tug': { label: 'Sherpa Tug', footprint: FOOTPRINTS['sherpa-tug'], build: () => sherpa(...FOOTPRINTS['sherpa-tug'], { tug: true }) },
 };
+
+// ---------------------------------------------------------------- towed material trolley
+const TM = {
+  steel: new THREE.MeshStandardMaterial({ color: 0x8a949c, roughness: 0.45, metalness: 0.6 }),
+  deck: new THREE.MeshStandardMaterial({ color: 0x3b4650, roughness: 0.7, metalness: 0.2 }),
+  carton: new THREE.MeshStandardMaterial({ color: 0xc89b62, roughness: 0.85 }),
+  tape: new THREE.MeshStandardMaterial({ color: 0xe8d3a8, roughness: 0.8 }),
+  tray: new THREE.MeshStandardMaterial({ color: 0x1f6f5c, roughness: 0.6 }),
+  board: new THREE.MeshStandardMaterial({ color: 0x2f8f3a, roughness: 0.5 }),
+  reel: new THREE.MeshStandardMaterial({ color: 0x2b2f36, roughness: 0.5 }),
+  reelHub: new THREE.MeshStandardMaterial({ color: 0xdfe4ea, roughness: 0.4 }),
+};
+
+/** Material trolley (local frame like the robots: +X forward towards the robot, ground at y = 0), with a tow bar reaching to the robot's hitch.
+ *  Returns the group and a `setCargo` that fills the deck to match the payload. */
+export function buildTrolley(): { group: THREE.Group; setCargo(kind: string, qty: number): void } {
+  const g = new THREE.Group(); const { L, W, bar } = TROLLEY; const deckY = 0.3;
+  part(g, GEO.box, TM.deck, [0, deckY, 0], [L, 0.05, W], true);                                              // deck
+  for (const z of [W / 2 - 0.02, -W / 2 + 0.02]) part(g, GEO.box, TM.steel, [0, deckY - 0.04, z], [L, 0.04, 0.04]);   // side rails
+  for (const x of [L / 2 - 0.12, -L / 2 + 0.12]) for (const z of [W / 2 - 0.1, -W / 2 + 0.1]) {
+    part(g, GEO.box, TM.steel, [x, deckY / 2, z], [0.03, deckY - 0.08, 0.03]);                              // caster fork
+    const w = part(g, GEO.cyl, M.black, [x, 0.06, z], [0.06, 0.04, 0.06], true); w.rotation.x = Math.PI / 2;  // caster wheel
+  }
+  for (const x of [-L / 2 + 0.02]) for (const z of [W / 2 - 0.02, -W / 2 + 0.02]) part(g, GEO.box, TM.steel, [x, deckY + 0.45, z], [0.03, 0.9, 0.03]);   // rear posts
+  part(g, GEO.box, TM.steel, [-L / 2 + 0.02, deckY + 0.88, 0], [0.03, 0.03, W - 0.04]);                     // push handle
+  part(g, GEO.box, TM.steel, [L / 2 + bar / 2, 0.2, 0], [bar + 0.1, 0.03, 0.05]);                            // tow bar
+  part(g, GEO.box, M.black, [L / 2 + bar, 0.2, 0], [0.08, 0.06, 0.1]);                                       // coupling
+  const cargo = new THREE.Group(); cargo.position.y = deckY + 0.025; g.add(cargo); let key = '';
+  return { group: g, setCargo(kind, qty) {
+    const k = `${kind}|${qty}`; if (k === key) return; key = k; cargo.clear(); const n = Math.max(1, Math.min(6, qty));
+    if (/reel/i.test(kind)) {                                                                    // SMT reels standing in rows
+      for (let i = 0; i < n * 2; i++) { const x = -L / 2 + 0.15 + (i % 6) * 0.16, z = i < 6 ? 0.19 : -0.19;   // discs face forward, like books on a shelf
+        const r = part(cargo, GEO.cyl, TM.reel, [x, 0.18, z], [0.17, 0.035, 0.17], true); r.rotation.z = Math.PI / 2;
+        const h = part(cargo, GEO.cyl, TM.reelHub, [x, 0.18, z], [0.05, 0.04, 0.05]); h.rotation.z = Math.PI / 2; }
+    } else if (/pcba|tray/i.test(kind)) {                                                         // stacked ESD trays with boards
+      for (let i = 0; i < n; i++) { const y = i * 0.07; part(cargo, GEO.box, TM.tray, [0, y + 0.03, 0], [L * 0.86, 0.06, W * 0.86], true);
+        for (const z of [0.16, -0.16]) part(cargo, GEO.box, TM.board, [0, y + 0.065, z], [L * 0.7, 0.01, 0.22]); }
+    } else {                                                                                       // cartons
+      for (let i = 0; i < n; i++) { const col = i % 3, lay = Math.floor(i / 3), x = -L / 2 + 0.2 + col * 0.35, h = 0.26;
+        part(cargo, GEO.box, TM.carton, [x, lay * h + h / 2, 0], [0.32, h, W * 0.8], true); part(cargo, GEO.box, TM.tape, [x, lay * h + h + 0.002, 0], [0.06, 0.004, W * 0.8]); }
+    }
+  } };
+}
 export const DEFAULT_MODEL = 'sherpa-xt-lite';
