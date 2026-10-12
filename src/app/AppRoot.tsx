@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/authStore';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { LiveFloorPage } from '@/features/live-floor/LiveFloorPage';
@@ -13,12 +13,12 @@ import { WorkflowBuilderPage } from '@/features/workflow-builder/WorkflowBuilder
 import { wfStore } from '@/features/workflow-builder/model/store';
 import { AppToaster } from '@/ui/toast';
 import { RequireRole } from './guards';
-import { homeFor } from './roles';
+import { landingFor, rememberPage } from './lastPage';
 
 function LoginRoute() {
   const user = useAuth((s) => s.user); const navigate = useNavigate();
-  if (user) return <Navigate to={homeFor(user.role)} replace />;       // already signed in
-  return <LoginPage onAuthenticated={(u) => navigate(homeFor(u.role), { replace: true })} />;
+  if (user) return <Navigate to={landingFor(user)} replace />;       // already signed in
+  return <LoginPage onAuthenticated={(u) => navigate(landingFor(u), { replace: true })} />;
 }
 /** "Workflows" in the sidebar: opens a new workflow (fleet not chosen yet) and shows it at its own URL. */
 function NewWorkflow() {
@@ -26,16 +26,24 @@ function NewWorkflow() {
   useEffect(() => { navigate(`/configurator/workflows/${wfStore.getState().startWorkflow()}`, { replace: true }); }, [navigate]);
   return null;
 }
-function RootRedirect() { const user = useAuth((s) => s.user); return <Navigate to={user ? homeFor(user.role) : '/login'} replace />; }
+/** Saves the signed-in user's current page; signed out (e.g. just logged out) saves nothing, so the page they left stays remembered. */
+function PageMemory() {
+  const user = useAuth((s) => s.user); const { pathname } = useLocation();
+  useEffect(() => { if (user) rememberPage(user, pathname); }, [user, pathname]);
+  return null;
+}
+function RootRedirect() { const user = useAuth((s) => s.user); return <Navigate to={user ? landingFor(user) : '/login'} replace />; }
 
 /** Route table: one public route (/login) and one page per role. Add a role = add a route + entry in roles.ts. */
 export function AppRoot() {
   return (
     <BrowserRouter>
       <AppToaster />
+      <PageMemory />
       <Routes>
         <Route path="/login" element={<LoginRoute />} />
-        <Route path="/live" element={<RequireRole role="supervisor"><LiveFloorPage /></RequireRole>} />
+        <Route path="/supervisor" element={<Navigate to="/supervisor/livefloor" replace />} />
+        <Route path="/supervisor/livefloor" element={<RequireRole role="supervisor"><LiveFloorPage /></RequireRole>} />
         <Route path="/configurator" element={<RequireRole role="configurator"><NewWorkflow /></RequireRole>} />
         <Route path="/configurator/workflows/:id" element={<RequireRole role="configurator"><WorkflowBuilderPage /></RequireRole>} />
         {(['robot', 'hardware'] as const).map((k) => (

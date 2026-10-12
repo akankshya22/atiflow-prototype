@@ -325,14 +325,14 @@ src/
   shell/          AppShell.tsx (sidebar + topbar + mobile drawer), Sidebar.tsx (data driven), Topbar.tsx (generic), UserMenu.tsx (avatar menu with Log out), types.ts
   ui/ core/ engine/ adapters/   shared UI pieces, Live Floor core/engine/simulator (unchanged)
 ```
-**Routes (react-router-dom, BrowserRouter):** `/login` (public), `/live` (role `supervisor`), `/configurator` (role `configurator`), everything else redirects (`/` -> signed-in user's home or `/login`). `RequireRole` sends signed-out users to `/login` and users of another role to their own home, so roles never see each other's pages. A production host needs an SPA fallback (serve index.html for unknown paths); the Vite dev server already does.
+**Routes (react-router-dom, BrowserRouter):** `/login` (public), `/supervisor` (redirects to `/supervisor/livefloor`, role `supervisor`), `/configurator` (role `configurator`), everything else redirects (`/` -> signed-in user's home or `/login`). `RequireRole` sends signed-out users to `/login` and users of another role to their own home, so roles never see each other's pages. A production host needs an SPA fallback (serve index.html for unknown paths); the Vite dev server already does.
 
 **Accounts (prototype, plain text on purpose, no encryption was requested):** edit `src/features/auth/users.ts`.
 | username | password | role | lands on | avatar |
 |---|---|---|---|---|
-| arjun | 1234 | supervisor | /live (Live Floor) | blue-turban illustration |
+| arjun | 1234 | supervisor | /supervisor/livefloor (Live Floor) | blue-turban illustration |
 | kavin (title: Ati Support Engineer) | 1234 | configurator | /configurator (Workflow Builder) | headset illustration (first image the user sent) |
-| meera (title: Systems Engineer) | 1234 | configurator | /configurator | saree illustration (second image the user sent) |
+| meera (title: System Integrator) | 1234 | configurator | /configurator | saree illustration (second image the user sent) |
 The title under the avatar is per user (`title` in users.ts); the sidebar header (CONFIGURATOR / SUPERVISOR) comes from the role. Usernames are case-insensitive. Session = username only; "Keep me signed in" ticked -> `localStorage['atiflow.session']`, unticked -> `sessionStorage` (cleared when the browser closes). Log out: click the avatar block at the bottom of the sidebar -> menu -> Log out (clears the session, goes to /login). Swap `authService.authenticate` for an API call later; callers only use its result.
 **Add a user:** one record in users.ts (+ avatar png in `features/auth/avatars/`). **Add a role:** extend `Role` (auth/types.ts), add it to `ROLES` (app/roles.ts), add a page + a `RequireRole` route in AppRoot, give the page a `useNavModel` hook.
 

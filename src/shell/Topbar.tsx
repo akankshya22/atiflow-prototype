@@ -29,7 +29,7 @@ export function Topbar({ onMenu, searchPlaceholder, getHits, onAi, onSupport }: 
       </div>
       <div className="tb-spacer" />
       <Button aria-label="Go to Support" size="sm" color="secondary" iconLeading={HeadsetHelp} onPress={onSupport ?? (() => notify.info('Support', 'Reach the AtiFlow support desk from the full app.', 'support'))}><span className="tb-text">Go to Support</span></Button>
-      <Button aria-label="Ati AI" size="sm" color="primary" iconLeading={Brain} onPress={onAi}><span className="tb-text">Ati AI</span></Button>
+      <Button aria-label="Ati AI" size="sm" color="primary" iconLeading={Brain} onPress={onAi ?? (() => notify.info('Ati AI isn\'t part of this prototype', undefined, 'ati-ai'))}><span className="tb-text">Ati AI</span></Button>
     </header>
   );
 }
