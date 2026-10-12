@@ -3,7 +3,7 @@ import { useStore } from 'zustand';
 import type { FleetMap } from './types';
 
 // placeholder thumbnail until real maps provide their own (the imported ECC floor plan)
-const PREVIEW = '/sites/ecc/preview.png';
+const PREVIEW = `${import.meta.env.BASE_URL}sites/ecc/preview.png`;
 
 /** The maps that are part of the system. (Generating or importing new maps is not defined yet, so this is the whole list.) */
 export const SYSTEM_MAPS: FleetMap[] = [

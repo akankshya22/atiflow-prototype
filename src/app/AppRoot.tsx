@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/authStore';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { LiveFloorPage } from '@/features/live-floor/LiveFloorPage';
@@ -35,9 +35,12 @@ function PageMemory() {
 function RootRedirect() { const user = useAuth((s) => s.user); return <Navigate to={user ? landingFor(user) : '/login'} replace />; }
 
 /** Route table: one public route (/login) and one page per role. Add a role = add a route + entry in roles.ts. */
+/** `VITE_HASH_ROUTER=1` (static hosting with no SPA fallback, e.g. a shared preview link) switches to #/ URLs. */
+const Router = import.meta.env.VITE_HASH_ROUTER === '1' ? HashRouter : BrowserRouter;
+
 export function AppRoot() {
   return (
-    <BrowserRouter>
+    <Router>
       <AppToaster />
       <PageMemory />
       <Routes>
@@ -57,6 +60,6 @@ export function AppRoot() {
         <Route path="/configurator/maps" element={<RequireRole role="configurator"><MapsPage /></RequireRole>} />
         <Route path="*" element={<RootRedirect />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }

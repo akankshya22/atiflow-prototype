@@ -21,9 +21,9 @@ export function LiveFloorPage() {
   const holder = useRef<HTMLDivElement>(null); const [view, setView] = useState({ x: 0, y: 0, yaw: 0, zoomPct: 100 }); const [ready, setReady] = useState(false); const [panels, setPanels] = useState(() => ({ fleet: window.innerWidth > 1100, legend: true })); const fleetOpen = panels.fleet;
   const fleets = useApp((s) => s.fleets), fleetId = useApp((s) => s.fleetId), mode = useApp((s) => s.cameraMode), site = useApp((s) => s.site), zoneId = useApp((s) => s.activeZoneId), q = useApp((s) => s.query);
   useEffect(() => {
-    let adapter: TelemetryAdapter | null = null; let dead = false; const eng = new Engine(holder.current!); handle.engine = eng; eng.pointmapUrl = `/sites/${SITE}/pointmap-2d.json`; eng.onView = setView;
+    let adapter: TelemetryAdapter | null = null; let dead = false; const eng = new Engine(holder.current!); handle.engine = eng; eng.pointmapUrl = `${import.meta.env.BASE_URL}sites/${SITE}/pointmap-2d.json`; eng.onView = setView;
     (async () => {
-      const [s, n] = await Promise.all([fetch(`/sites/${SITE}/site.json`).then((r) => r.json() as Promise<SiteLayout>), fetch(`/sites/${SITE}/nav.json`).then((r) => r.json() as Promise<NavGraph>)]);
+      const [s, n] = await Promise.all([fetch(`${import.meta.env.BASE_URL}sites/${SITE}/site.json`).then((r) => r.json() as Promise<SiteLayout>), fetch(`${import.meta.env.BASE_URL}sites/${SITE}/nav.json`).then((r) => r.json() as Promise<NavGraph>)]);
       if (dead) return;
       store.getState().setSite(s, n); eng.load(s, n); setReady(true);
       adapter = new MockSimulator(n, s.siteId);
