@@ -1,4 +1,4 @@
-import { useState, type FC } from 'react';
+import { useRef, useState, type FC } from 'react';
 import { useApp, store } from '../core/store';
 import type { RobotState } from '../core/types';
 import { handle } from './engineHandle';
@@ -14,7 +14,7 @@ import { Dropdown } from '@/components/base/dropdown/dropdown';
 import { VIEWS, viewDef, type ViewId } from '../core/views';
 import { ZoomBar } from './ZoomBar';
 import { ProgressBar } from '@/components/base/progress-indicators/progress-indicators';
-import { ChevronDown, Cube01, Dotpoints01, Home01, Map01, Map02, NavigationPointer01, Route, Signal01 } from '@untitledui/icons';
+import { XClose, ChevronDown, Cube01, Dotpoints01, Home01, Map01, Map02, NavigationPointer01, Route, Signal01 } from '@untitledui/icons';
 import type { RobotTelemetry } from '../core/types';
 
 type Pick = ViewId | 'walk' | 'follow';
@@ -67,14 +67,23 @@ export function ZoomControl({ pct }: { pct: number }) {
 }
 
 const ORDER: RobotState[] = ['moving', 'waiting', 'working', 'charging', 'blocked', 'error', 'idle', 'offline', 'paused'];
-export function FleetList() {
+/** Fleet list: a floating panel over the map. Drag it by its header (desktop); close it with X or from the View menu. */
+export function FleetList({ onClose }: { onClose: () => void }) {
+  const [off, setOff] = useState({ x: 0, y: 0 }); const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const robots = useApp((s) => s.robots), fleetId = useApp((s) => s.fleetId), sel = useApp((s) => s.selectedId), events = useApp((s) => s.events), q = useApp((s) => s.query);
   const [f, setF] = useState<RobotState | null>(null);
   const all = Object.values(robots).filter((r) => fleetId === 'all' || r.fleetId === fleetId).filter((r) => !q || r.id.toLowerCase().includes(q.toLowerCase()));
   const counts = ORDER.map((s) => [s, all.filter((r) => r.state === s).length] as const).filter(([, n]) => n);
   const list = all.filter((r) => !f || r.state === f).sort((a, b) => a.id.localeCompare(b.id));
-  return <div className="fleet">
-    <header><span>Fleet</span><Badge size="sm" color="gray">{all.length} robots</Badge></header>
+  return <div className="float fleet" style={off.x || off.y ? { transform: `translate(${off.x}px, ${off.y}px)` } : undefined}>
+    <header onPointerDown={(e) => { if ((e.target as HTMLElement).closest('button')) return; drag.current = { x: e.clientX, y: e.clientY, ox: off.x, oy: off.y }; e.currentTarget.setPointerCapture(e.pointerId); }}
+      onPointerMove={(e) => {
+        const d = drag.current; if (!d) return; const el = e.currentTarget.parentElement!, box = el.parentElement!;   // keep the panel inside the map
+        const maxX = box.clientWidth - el.offsetWidth - 2 * el.offsetLeft, maxY = box.clientHeight - el.offsetHeight - el.offsetTop - 72;   // stay above the search bar
+        setOff({ x: Math.min(Math.max(d.ox + e.clientX - d.x, -el.offsetLeft + 4), maxX + el.offsetLeft - 4), y: Math.min(Math.max(d.oy + e.clientY - d.y, -el.offsetTop + 4), maxY) });
+      }}
+      onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
+      <span>Fleet</span><span className="fl-r"><Badge size="sm" color="gray">{all.length} robots</Badge><ButtonUtility size="xs" color="tertiary" icon={XClose} tooltip="Hide fleet list" onPress={onClose} /></span></header>
     <div className="counts">{counts.map(([s, n]) => <button key={s} className={'cnt' + (f === s ? ' on' : '')} aria-pressed={f === s} onClick={() => setF(f === s ? null : s)}><BadgeWithDot size="sm" color={STATE_TONE[s]}>{n} {s}</BadgeWithDot></button>)}</div>
     <div className="rlist">{list.map((r) => <button key={r.id} className={'ritem' + (sel === r.id ? ' sel' : '')} onClick={() => handle.engine?.focusRobot(r.id)}>
       <i className="dot" style={{ background: STATE_COLOR[r.state], width: 10, height: 10 }} /><div><div className="nm">{r.id}</div><small>{r.task ? `${r.task.type} → ${r.task.to}` : r.state}</small></div><span className="bat" style={{ color: r.battery < 25 ? '#dc2626' : undefined }}>{r.battery}%</span></button>)}</div>

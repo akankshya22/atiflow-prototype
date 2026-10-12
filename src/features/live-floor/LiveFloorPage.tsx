@@ -49,7 +49,7 @@ export function LiveFloorPage() {
               items={[{ id: 'all', label: 'All fleets' }, ...fleets.map((f) => ({ id: f.id, label: f.name }))]}>{(item) => <Select.Item {...item} />}</Select></div>
           <div className="livebody">
             <div className="canvas"><div className="gl" ref={holder} />{!ready && <div className="loading">Loading site…</div>}
-              <MapToolbar panels={panels} onPanels={setPanels} />{panels.legend && !sel && !selStation && <MapLegend />}
+              <MapToolbar panels={panels} onPanels={setPanels} />{fleetOpen && <FleetList onClose={() => setPanels((p) => ({ ...p, fleet: false }))} />}{panels.legend && !sel && !selStation && <MapLegend />}
               {zone && <div className="float zonebar"><i className="dot" style={{ background: zone.color }} />{zone.name}<ButtonUtility size="xs" color="tertiary" icon={XClose} tooltip="Back to whole floor" onPress={() => handle.engine?.home()} /></div>}
               {mode === 'walk' && <div className="float hint">{coarse ? 'Left stick: move (push far to run) · Drag to look' : 'WASD move · Mouse look · Shift run · Esc exit'}</div>}<WalkPad />
               <div className="float cmd"><span className="ai"><Stars02 className="size-4" /></span>
@@ -57,8 +57,8 @@ export function LiveFloorPage() {
                 <Button size="sm" color="primary" iconLeading={Send01} aria-label="Search" /></div>
               <ZoomControl pct={view.zoomPct} />
             </div>
-            {/* Robot / station cards and the fleet list live beside the map, never on top of it. */}
-            {(fleetOpen || sel || selStation) && <aside className={'side' + (sel || selStation ? ' has-sel' : '')} aria-label="Fleet and details"><RobotPanel /><StationPanel />{fleetOpen && <FleetList />}</aside>}
+            {/* Robot / station cards live beside the map, never on top of it; the fleet list floats over the map. */}
+            {(sel || selStation) && <aside className="side" aria-label="Robot and station details"><RobotPanel /><StationPanel /></aside>}
           </div></div>
       </div>
     </AppShell>

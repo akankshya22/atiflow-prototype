@@ -54,17 +54,16 @@ img { display: block; }
 .tile { width: 60px; height: 50px; border-radius: var(--r-md); border: 1px solid transparent; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 9px; line-height: 12px; font-weight: 500; color: var(--text-secondary); }
 .tile i { width: 14px; height: 14px; border-radius: 4px; border: 2px solid currentColor; opacity: .7; }
 .tile.off { filter: grayscale(1); opacity: .45; background: var(--bg-tertiary) !important; }
-/* map toolbar: fleet toggle + camera views + map layers in one bar */
+/* map toolbar: View menu + Home */
 .mapbar { top: 12px; left: 12px; display: flex; align-items: center; gap: 6px; padding: 0; background: none; border: 0; box-shadow: none; backdrop-filter: none; }
 .mapbar .vm-k { color: var(--text-placeholder); font-weight: 500; margin-right: 6px; }
 .vm-l { display: block; } .vm-h { display: block; font-size: 12px; line-height: 16px; font-weight: 400; color: var(--text-placeholder); white-space: normal; }
 .vm-head { padding: 8px 16px 2px; font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--text-placeholder); }
-/* map body: canvas + side column (fleet list, robot/station card) */
+/* map body: canvas + side column (robot / station card) */
 .livebody { flex: 1; min-height: 0; display: flex; }
 .livebody .canvas { min-width: 0; }
 .side { width: 320px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--border-secondary); background: var(--bg-primary); min-height: 0; overflow: auto; }
 .side .rpanel { position: static; width: auto; max-height: none; overflow: visible; border: 0; border-bottom: 1px solid var(--border-secondary); border-radius: 0; box-shadow: none; backdrop-filter: none; flex: none; }
-.side .fleet { flex: 1; min-height: 280px; }
 .hint { bottom: 76px; left: 50%; transform: translateX(-50%); padding: 8px 14px; font-size: 12px; background: rgba(15,27,36,.88); color: #e2e8f0; border: 0; }
 /* minimap */
 .minimap { top: 16px; right: 16px; width: 196px; overflow: hidden; } .minimap header { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 12px; font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--border-secondary); } .minimap canvas { display: block; width: 196px; height: 110px; cursor: crosshair; }
@@ -72,8 +71,9 @@ img { display: block; }
 .cmd { left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 340px)); bottom: 16px; height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 10px; }
 .cmd .ai { width: 32px; height: 32px; border-radius: 50%; background: #e8f7f5; color: #0f766e; display: grid; place-items: center; font-size: 14px; }
 .zoom { right: 16px; bottom: 16px; width: 132px; height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 7px; font-size: 12px; font-weight: 500; }
-/* fleet list (side column) */
-.fleet { display: flex; flex-direction: column; overflow: hidden; }
+/* fleet list (floating over the map, draggable by its header) */
+.fleet { left: 12px; top: 60px; width: 288px; max-height: calc(100% - 140px); display: flex; flex-direction: column; overflow: hidden; }
+.fleet header { cursor: grab; touch-action: none; } .fleet header:active { cursor: grabbing; } .fleet .fl-r { display: flex; align-items: center; gap: 4px; }
 .fleet header { padding: 12px 14px 8px; display: flex; justify-content: space-between; align-items: center; font-weight: 600; }
 .counts { display: flex; gap: 6px; padding: 0 12px 10px; flex-wrap: wrap; }
 .rlist { flex: 1; overflow: auto; padding: 0 6px 6px; }
@@ -111,7 +111,8 @@ img { display: block; }
   .bh { padding: 0 12px; } .bh span[style] { display: none; } .bh h2 { white-space: nowrap; }
   .mapbar { top: 8px; left: 8px; }
   .livebody { flex-direction: column; } .side { width: auto; border-left: 0; border-top: 1px solid var(--border-secondary); flex: 0 0 45%; }
-  .side.has-sel .fleet { display: none; } .side .fleet { min-height: 0; }
+  .fleet { left: 8px; right: 8px; width: auto; top: auto; bottom: 68px; max-height: 45%; transform: none !important; } .fleet header { cursor: default; }
+  .livebody:has(.side) .fleet { display: none; }   /* a robot card is open below the map: give the small map back */
   .cmd { left: 8px; right: 8px; width: auto; transform: none; bottom: 8px; } .zoom { display: none; }
   .zonebar { bottom: 68px; left: auto; right: 8px; } .hint { bottom: 68px; max-width: 90%; text-align: center; }
 }
