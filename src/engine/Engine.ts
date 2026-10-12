@@ -21,7 +21,9 @@ export class Engine {
   private controls: OrbitControls; private clock = new THREE.Clock(); private raf = 0;
   private site!: SiteLayout; private nav!: NavGraph; private world!: CollisionWorld;
   private robots = new Map<string, RobotVis>(); private robotRoot = new THREE.Group();
-  private layerGroups: Record<LayerKey, THREE.Object3D[]> = { robots: [], routes: [], stations: [], zones: [], labels: [], equipment: [], alerts: [] };
+  private layerGroups: Record<LayerKey, THREE.Object3D[]> = { robots: [], routes: [], stations: [], zones: [], labels: [], equipment: [], alerts: [], pointmap: [], lidar: [] };
+  /** URL of the site's 2D LiDAR point map (tools/pointmap); fetched the first time the `pointmap` layer is switched on. */
+  pointmapUrl: string | null = null; private pointmapState: 'none' | 'loading' | 'ready' = 'none';
   private zoneMeshes: { zone: Zone; mesh: THREE.Mesh; edge: THREE.LineLoop }[] = [];
   private zoneLabels: THREE.Sprite[] = []; private rules!: RulesLayer; private incoming = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf59e0b }));
   private pathLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x14b8a6 }));
@@ -68,7 +70,7 @@ export class Engine {
     this.unsub.push(store.subscribe((s, p) => {
       if (s.cameraMode !== p.cameraMode) this.setMode(s.cameraMode);
       if (s.layers !== p.layers) this.applyLayers();
-      if (s.selectedId !== p.selectedId) { this.onSelect(); if (!s.selectedId && this.mode === 'follow') store.getState().setCameraMode('orbit'); }   // nothing left to follow
+      if (s.selectedId !== p.selectedId) { this.onSelect(); if (!s.selectedId && this.mode === 'follow') store.getState().exitToView(); }   // nothing left to follow
       if (s.traffic !== p.traffic) this.rules?.setTraffic(s.traffic);
       if (s.selectedStationId !== p.selectedStationId) { this.rules?.setSelected(s.selectedStationId); if (s.selectedStationId) this.focusStation(s.selectedStationId); }
       if (s.fleetId !== p.fleetId) this.rules?.setFleet(s.fleetId);
@@ -106,7 +108,7 @@ export class Engine {
       const act = inActive((w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2);
       wallMesh.setColorAt(i, col.set(w.layer === 'shell' ? 0x9aa6a2 : act ? 0x44534e : MUTED));
     });
-    wallMesh.castShadow = wallMesh.receiveShadow = true; this.scene.add(wallMesh);
+    wallMesh.castShadow = wallMesh.receiveShadow = true; this.scene.add(wallMesh); this.layerGroups.equipment.push(wallMesh);   // structure: hidden with equipment in the scan views
 
     // equipment (instanced)
     const eq = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.7 }), site.equipment.length);
@@ -175,20 +177,44 @@ export class Engine {
   private applyLayers() {
     const L = store.getState().layers;
     (Object.keys(this.layerGroups) as LayerKey[]).forEach((k) => this.layerGroups[k].forEach((o) => { if (k !== 'robots') o.visible = L[k]; }));
-    this.layerGroups.stations.forEach((o) => (o.visible = L.stations)); this.layerGroups.labels.forEach((o) => (o.visible = L.labels));
+    this.layerGroups.stations.forEach((o) => (o.visible = L.stations)); this.layerGroups.labels.forEach((o) => (o.visible = L.labels && L.zones));   // area names belong to the Zones layer too
+    this.rules?.setZonesVisible(L.zones); this.refreshZones(); if (L.pointmap || L.lidar) this.ensurePointMap();
     const s = store.getState(); this.applyFilter(s.fleetId, s.query);
+  }
+  /** 2D LiDAR scan as flat points just above the floor. Format: uint16 LE (x_cm, y_cm) pairs, base64, site frame. */
+  private async ensurePointMap() {
+    if (this.pointmapState !== 'none' || !this.pointmapUrl) return; this.pointmapState = 'loading';
+    try {
+      const d = (await fetch(this.pointmapUrl).then((r) => r.json())) as { b64: string; count: number };
+      const bin = atob(d.b64); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      const v = new DataView(u.buffer); const n = Math.floor(u.length / 4); const pos = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { const [x, y, z] = toScene(v.getUint16(i * 4, true) / 100, v.getUint16(i * 4 + 2, true) / 100, 0.06); pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z; }
+      const pts = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(pos, 3)), new THREE.PointsMaterial({ color: 0x0e9384, size: 2, sizeAttenuation: false }));
+      pts.renderOrder = 2; this.scene.add(pts); this.layerGroups.pointmap.push(pts);
+      // LiDAR 3D: the same scan hits stacked up to 2.1 m, coloured by height, so obstacles read as a point cloud
+      const H = [0.1, 0.6, 1.1, 1.6, 2.1]; const p3 = new Float32Array(n * 3 * H.length), c3 = new Float32Array(n * 3 * H.length); const lo = new THREE.Color(0x134e4a), hi = new THREE.Color(0x5eead4), c = new THREE.Color();
+      H.forEach((h, k) => { c.copy(lo).lerp(hi, k / (H.length - 1)); for (let i = 0; i < n; i++) { const o = (k * n + i) * 3; p3[o] = pos[i * 3]; p3[o + 1] = h + ((i * 7919) % 100) / 400; p3[o + 2] = pos[i * 3 + 2]; c3[o] = c.r; c3[o + 1] = c.g; c3[o + 2] = c.b; } });
+      const cloud = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(p3, 3)).setAttribute('color', new THREE.BufferAttribute(c3, 3)), new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true }));
+      this.scene.add(cloud); this.layerGroups.lidar.push(cloud);
+      this.pointmapState = 'ready'; pts.visible = store.getState().layers.pointmap; cloud.visible = store.getState().layers.lidar;
+    } catch { this.pointmapState = 'none'; }
   }
   private refreshZones() {
     const act = store.getState().activeZoneId;
-    for (const z of this.zoneMeshes) { const on = z.zone.id === act; (z.mesh.material as THREE.MeshBasicMaterial).opacity = on ? 0.22 : z.zone.active ? (this.hoverZone === z.zone.id ? 0.2 : 0.09) : 0; z.edge.visible = z.zone.active; }
+    for (const z of this.zoneMeshes) { const on = z.zone.id === act; (z.mesh.material as THREE.MeshBasicMaterial).opacity = on ? 0.22 : z.zone.active ? (this.hoverZone === z.zone.id ? 0.2 : 0.09) : 0; z.edge.visible = z.zone.active && store.getState().layers.zones; }
   }
 
   // ---------------------------------------------------------------- camera
   private setMode(m: CameraMode) {
     const prev = this.mode; this.mode = m;
     if (prev === 'walk' && m !== 'walk') { this.touchMove = { f: 0, s: 0 }; this.lookPrev.clear(); if (document.pointerLockElement) document.exitPointerLock(); this.syncTargetFromCamera(); }
-    const c = this.controls; c.enabled = m === 'orbit' || m === 'top';
-    c.maxPolarAngle = m === 'top' ? 0.0001 : Math.PI / 2.05; c.minPolarAngle = m === 'top' ? 0 : 0.05;
+    const c = this.controls; c.enabled = m === 'orbit' || m === 'top' || m === 'map';
+    c.maxPolarAngle = m === 'top' ? 0.0001 : m === 'map' ? 1.05 : Math.PI / 2.05; c.minPolarAngle = m === 'top' ? 0 : m === 'map' ? 0.2 : 0.05;
+    // 2.5D map behaves like a web map: drag pans along the floor, right-drag / two-finger drag tilts and turns, pinch zooms
+    const map = m === 'map'; c.screenSpacePanning = !map;
+    c.mouseButtons = map ? { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE } : { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+    c.touches = map ? { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE } : { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    if (map) { const t = c.target.clone(); const off = this.camera.position.clone().sub(t); const d = Math.max(off.length(), 40); const az = Math.atan2(off.x, off.z); this.flyTo(t.clone().add(new THREE.Vector3(Math.sin(az) * Math.sin(0.8), Math.cos(0.8), Math.cos(az) * Math.sin(0.8)).multiplyScalar(d)), t); }
     if (m === 'top') { const t = c.target.clone(); this.flyTo(new THREE.Vector3(t.x, Math.max(this.camera.position.distanceTo(t), 60), t.z + 0.001), t); }
     if (m === 'walk') this.enterWalk();
     if (m === 'orbit' && prev === 'top') { const t = c.target.clone(); const d = this.camera.position.distanceTo(t); this.flyTo(new THREE.Vector3(t.x - d * 0.3, d * 0.8, t.z + d * 0.55), t); }
@@ -210,14 +236,18 @@ export class Engine {
     if (!this.coarse) Promise.resolve(this.renderer.domElement.requestPointerLock?.()).catch(() => {});   // touch devices look by dragging instead
   }
   private applyWalkLook() { this.camera.rotation.set(this.walk.pitch, this.walk.yaw, 0, 'YXZ'); }
-  private onLock = () => { if (!document.pointerLockElement && this.mode === 'walk') store.getState().setCameraMode('orbit'); };
+  private onLock = () => { if (!document.pointerLockElement && this.mode === 'walk') store.getState().exitToView(); };
   private onLook = (e: MouseEvent) => { if (this.mode !== 'walk' || !document.pointerLockElement) return; this.walk.yaw -= e.movementX * 0.0022; this.walk.pitch = Math.max(-1.2, Math.min(1.2, this.walk.pitch - e.movementY * 0.0022)); this.applyWalkLook(); };
-  private onKey = (e: KeyboardEvent) => { if ((e.target as HTMLElement)?.tagName === 'INPUT') return; e.type === 'keydown' ? this.keys.add(e.code) : this.keys.delete(e.code); if (e.code === 'Escape' && this.mode === 'follow') store.getState().setCameraMode('orbit'); };
+  private onKey = (e: KeyboardEvent) => { if ((e.target as HTMLElement)?.tagName === 'INPUT') return; e.type === 'keydown' ? this.keys.add(e.code) : this.keys.delete(e.code); if (e.code === 'Escape' && this.mode === 'follow') store.getState().exitToView(); };
   flyTo(pos: THREE.Vector3, target: THREE.Vector3, dur = 1) { this.fly = { t: 0, dur, p0: this.camera.position.clone(), p1: pos, t0: this.controls.target.clone(), t1: target }; }
-  home() { store.getState().setZone(null); store.getState().select(null); store.getState().setCameraMode('orbit'); this.flyTo(this.homePos.clone(), this.homeTarget.clone()); }
+  home() {
+    store.getState().setZone(null); store.getState().select(null); store.getState().exitToView();
+    const t = this.homeTarget.clone(), d = this.homePos.distanceTo(t);   // whole floor, seen the way the current view looks at it
+    this.flyTo(this.mode === 'top' ? new THREE.Vector3(t.x, d, t.z + 0.001) : this.mode === 'map' ? t.clone().add(new THREE.Vector3(0, d * Math.cos(0.8), d * Math.sin(0.8))) : this.homePos.clone(), t);
+  }
   zoomBy(f: number) { const o = this.camera.position.clone().sub(this.controls.target).multiplyScalar(f); const L = THREE.MathUtils.clamp(o.length(), this.controls.minDistance, this.controls.maxDistance); this.camera.position.copy(this.controls.target).add(o.setLength(L)); }
   focusZone(id: string) {
-    const z = this.site.zones.find((q) => q.id === id); if (!z) return; store.getState().setZone(id); if (this.mode === 'walk' || this.mode === 'follow') store.getState().setCameraMode('orbit');
+    const z = this.site.zones.find((q) => q.id === id); if (!z) return; store.getState().setZone(id); if (this.mode === 'walk' || this.mode === 'follow') store.getState().exitToView();
     const cx = (z.polygon[0][0] + z.polygon[2][0]) / 2, cy = (z.polygon[0][1] + z.polygon[2][1]) / 2, w = z.polygon[2][0] - z.polygon[0][0], d = z.polygon[2][1] - z.polygon[0][1];
     const dist = Math.max(w, d) * 1.5; const tgt = new THREE.Vector3(...toScene(cx, cy, 0));
     this.flyTo(this.mode === 'top' ? new THREE.Vector3(tgt.x, dist * 1.1, tgt.z + 0.001) : new THREE.Vector3(tgt.x - dist * 0.3, dist * 0.85, tgt.z + dist * 0.65), tgt);
@@ -276,7 +306,7 @@ export class Engine {
       const p = this.lookPrev.get(e.pointerId); if (p) { this.walk.yaw -= (e.clientX - p.x) * 0.0055; this.walk.pitch = THREE.MathUtils.clamp(this.walk.pitch - (e.clientY - p.y) * 0.0055, -1.2, 1.2); this.applyWalkLook(); this.lookPrev.set(e.pointerId, { x: e.clientX, y: e.clientY }); }
       return;
     }
-    if (this.touchPts.size === 2 && this.twistPrev !== null && (this.mode === 'orbit' || this.mode === 'top')) {   // two-finger twist rotates the view about the look-at point
+    if (this.touchPts.size === 2 && this.twistPrev !== null && (this.mode === 'orbit' || this.mode === 'top' || this.mode === 'map')) {   // two-finger twist rotates the view about the look-at point
       const a = this.twistAngle(); let d = a - this.twistPrev; if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; this.twistPrev = a;
       if (Math.abs(d) < 0.6) { const off = this.camera.position.clone().sub(this.controls.target).applyAxisAngle(new THREE.Vector3(0, 1, 0), d); this.camera.position.copy(this.controls.target).add(off); }
     }

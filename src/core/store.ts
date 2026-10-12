@@ -1,6 +1,7 @@
 import { createStore } from 'zustand/vanilla';
 import { useStore } from 'zustand';
 import { RulesIndex, type TrafficZoneState } from './rules';
+import { viewDef, type ViewId } from './views';
 import type { CameraMode, FleetDef, LayerKey, NavGraph, RobotTelemetry, SiteLayout } from './types';
 
 export interface AppEvent { ts: number; robotId: string; text: string; level: 'info' | 'warn' | 'critical' }
@@ -11,10 +12,10 @@ export interface AppState {
   robots: Record<string, RobotTelemetry>; traffic: Record<string, TrafficZoneState>; violations: number;
   events: AppEvent[];
   selectedId: string | null; selectedStationId: string | null; activeZoneId: string | null;
-  cameraMode: CameraMode; layers: Record<LayerKey, boolean>; query: string; paused: boolean;
+  cameraMode: CameraMode; view: ViewId; layers: Record<LayerKey, boolean>; query: string; paused: boolean;
   setSite(s: SiteLayout, n: NavGraph): void;
   ingest(batch: RobotTelemetry[]): void; select(id: string | null): void; selectStation(id: string | null): void; setZone(id: string | null): void;
-  setCameraMode(m: CameraMode): void; toggleLayer(k: LayerKey): void; setFleet(id: string | 'all'): void;
+  setCameraMode(m: CameraMode): void; setView(v: ViewId): void; exitToView(): void; toggleLayer(k: LayerKey): void; setFleet(id: string | 'all'): void;
   setQuery(q: string): void; setPaused(p: boolean): void; setNav(sel: string): void;
 }
 
@@ -22,8 +23,8 @@ const activeRuleAlerts = new Set<string>();
 
 export const store = createStore<AppState>((set, get) => ({
   site: null, nav: null, rules: null, fleets: [], fleetId: 'all', navSel: 'live', robots: {}, traffic: {}, violations: 0, events: [], selectedId: null, selectedStationId: null, activeZoneId: null,
-  cameraMode: 'orbit', query: '', paused: false,
-  layers: { robots: true, routes: true, stations: true, zones: true, labels: true, equipment: true, alerts: true },
+  cameraMode: 'orbit', view: '3d', query: '', paused: false,
+  layers: { robots: true, routes: true, stations: true, zones: true, labels: true, equipment: true, alerts: true, pointmap: false, lidar: false },
   setSite: (site, nav) => set({ site, nav, rules: new RulesIndex(nav, site), fleets: nav.fleets }),
   ingest: (batch) => {
     const { rules, robots: prev } = get(); const robots = { ...prev }; const added: AppEvent[] = [];
@@ -43,6 +44,8 @@ export const store = createStore<AppState>((set, get) => ({
   selectStation: (selectedStationId) => set({ selectedStationId, selectedId: selectedStationId ? null : get().selectedId }),
   setZone: (activeZoneId) => set({ activeZoneId }),
   setCameraMode: (cameraMode) => set({ cameraMode }),
+  setView: (view) => { const d = viewDef(view); set({ view, cameraMode: d.mode, layers: { ...get().layers, ...d.layers } }); },
+  exitToView: () => set({ cameraMode: viewDef(get().view).mode }),   // leaving Walk / Follow returns to the chosen view
   toggleLayer: (k) => set({ layers: { ...get().layers, [k]: !get().layers[k] } }),
   setFleet: (fleetId) => set({ fleetId }), setNav: (navSel) => set({ navSel }), setQuery: (query) => set({ query }), setPaused: (paused) => set({ paused }),
 }));

@@ -20,6 +20,6 @@ export function WalkPad() {
     <div className="walkpad" role="application" aria-label="Move stick"
       onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); const r = e.currentTarget.getBoundingClientRect(); origin.current = { x: r.left + r.width / 2, y: r.top + r.height / 2 }; move(e); }}
       onPointerMove={move} onPointerUp={end} onPointerCancel={end}><div className="knob" ref={knob} /></div>
-    <div className="walkexit"><Button size="sm" color="secondary" iconLeading={XClose} onPress={() => store.getState().setCameraMode('orbit')}>Exit walk</Button></div>
+    <div className="walkexit"><Button size="sm" color="secondary" iconLeading={XClose} onPress={() => store.getState().exitToView()}>Exit walk</Button></div>
   </>;
 }

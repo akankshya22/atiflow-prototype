@@ -47,5 +47,5 @@ export interface TelemetryAdapter {
   onTelemetry(cb: (batch: RobotTelemetry[]) => void): void;
 }
 
-export type CameraMode = 'orbit' | 'top' | 'walk' | 'follow';
-export type LayerKey = 'robots' | 'routes' | 'stations' | 'zones' | 'labels' | 'equipment' | 'alerts';
+export type CameraMode = 'orbit' | 'top' | 'map' | 'walk' | 'follow';   // map = 2.5D tilted map (Google Maps style)
+export type LayerKey = 'robots' | 'routes' | 'stations' | 'zones' | 'labels' | 'equipment' | 'alerts' | 'pointmap' | 'lidar';

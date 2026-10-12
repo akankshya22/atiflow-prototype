@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FC } from 'react';
 import { useApp, store } from '../core/store';
 import type { RobotState } from '../core/types';
 import { handle } from './engineHandle';
@@ -8,27 +8,57 @@ import { InfoPanel } from './InfoPanel';
 import { STATE_TONE } from './tones';
 import { notify } from './toast';
 import { Badge, BadgeWithDot } from '@/components/base/badges/badges';
-import { Button } from '@/components/base/buttons/button';
 import { ButtonUtility } from '@/components/base/buttons/button-utility';
-import { ButtonGroup, ButtonGroupItem } from '@/components/base/button-group/button-group';
+import { Button } from '@/components/base/buttons/button';
+import { Dropdown } from '@/components/base/dropdown/dropdown';
+import { VIEWS, viewDef, type ViewId } from '../core/views';
 import { ZoomBar } from './ZoomBar';
 import { ProgressBar } from '@/components/base/progress-indicators/progress-indicators';
-import { Home01, Minus, Plus, Users01 } from '@untitledui/icons';
+import { ChevronDown, Cube01, Dotpoints01, Home01, Map01, Map02, NavigationPointer01, Route, Signal01 } from '@untitledui/icons';
 import type { RobotTelemetry } from '../core/types';
 
-type Mode = 'orbit' | 'top' | 'walk' | 'follow';
-export function CameraModes({ fleetOpen, onFleet }: { fleetOpen: boolean; onFleet: () => void }) {
-  const m = useApp((s) => s.cameraMode);
-  const change = (v: Mode) => {
+type Pick = ViewId | 'walk' | 'follow';
+const VIEW_ICON: Record<Pick, FC<{ className?: string }>> = { pointmap: Dotpoints01, plan: Map01, map: Map02, '3d': Cube01, lidar: Signal01, walk: NavigationPointer01, follow: Route };
+const CAMERA_ONLY: { id: 'walk' | 'follow'; label: string; hint: string }[] = [
+  { id: 'walk', label: 'Walk', hint: 'First person on the floor' }, { id: 'follow', label: 'Follow', hint: 'Chase the selected robot' },
+];
+export type PanelKey = 'fleet' | 'legend';
+/** The one map control: a View menu (2D point map, 2D plan, 2.5D map, 3D, LiDAR 3D, Walk, Follow) that also shows / hides the Fleet list, Map key and Zones, plus Home. */
+export function MapToolbar({ panels, onPanels }: { panels: Record<PanelKey, boolean>; onPanels: (p: Record<PanelKey, boolean>) => void }) {
+  const mode = useApp((s) => s.cameraMode); const view = useApp((s) => s.view); const zones = useApp((s) => s.layers.zones); const fleetId = useApp((s) => s.fleetId);
+  const count = useApp((s) => Object.values(s.robots).filter((r) => fleetId === 'all' || r.fleetId === fleetId).length);
+  const cur: Pick = mode === 'walk' || mode === 'follow' ? mode : view;
+  const label = cur === 'walk' || cur === 'follow' ? CAMERA_ONLY.find((c) => c.id === cur)!.label : viewDef(cur).label;
+  const pick = (v: Pick) => {
     if (v === 'follow' && !store.getState().selectedId) { notify.warning('No robot selected', 'Please select a robot first to follow.', 'follow-needs-robot'); return; }   // Follow stays clickable; explain instead of disabling
-    store.getState().setCameraMode(v);
+    if (v === 'walk' || v === 'follow') store.getState().setCameraMode(v); else store.getState().setView(v);
   };
-  return <div className="float modes">
-    <ButtonGroup size="sm" aria-label="Camera mode" selectedKeys={[m]} disallowEmptySelection onSelectionChange={(k) => { const v = [...k][0] as Mode | undefined; if (v) change(v); }}>
-      <ButtonGroupItem id="orbit">3D</ButtonGroupItem><ButtonGroupItem id="top">Top</ButtonGroupItem><ButtonGroupItem id="walk">Walk</ButtonGroupItem><ButtonGroupItem id="follow">Follow</ButtonGroupItem>
-    </ButtonGroup>
-    <Button size="sm" color="secondary" aria-label="Home (whole floor)" iconLeading={Home01} onPress={() => handle.engine?.home()}><span className="lbl">Home</span></Button>
-    <Button size="sm" color={fleetOpen ? 'primary' : 'secondary'} iconLeading={Users01} aria-label="Fleet list" aria-pressed={fleetOpen} onPress={onFleet}><span className="lbl">Fleet</span></Button>
+  const shown = [...(panels.fleet ? ['fleet'] : []), ...(panels.legend ? ['legend'] : []), ...(zones ? ['zones'] : [])];
+  const item = (id: Pick, text: string, hint: string) => <Dropdown.Item key={id} id={id} icon={VIEW_ICON[id]} textValue={text}><span className="vm-l">{text}</span><span className="vm-h">{hint}</span></Dropdown.Item>;
+  return <div className="float mapbar" role="toolbar" aria-label="Map controls">
+    <Dropdown.Root>
+      <Button size="sm" color="secondary" iconLeading={VIEW_ICON[cur]} iconTrailing={ChevronDown} aria-label={`View: ${label}. Change view or show and hide panels`}><span className="vm-k">View</span>{label}</Button>
+      <Dropdown.Popover placement="bottom start" className="w-72 max-h-[70vh]">
+        <Dropdown.Menu aria-label="Map view and panels">
+          <Dropdown.Section selectionMode="single" disallowEmptySelection selectedKeys={[cur]} onSelectionChange={(k) => { const v = [...k][0] as Pick | undefined; if (v) pick(v); }}>
+            <Dropdown.SectionHeader className="vm-head">View</Dropdown.SectionHeader>
+            {VIEWS.map((v) => item(v.id, v.label, v.hint))}
+            {CAMERA_ONLY.map((c) => item(c.id, c.label, c.hint))}
+          </Dropdown.Section>
+          <Dropdown.Separator />
+          <Dropdown.Section selectionMode="multiple" selectedKeys={shown} shouldCloseOnSelect={false} onSelectionChange={(k) => {
+            const ks = k === 'all' ? new Set(['fleet', 'legend', 'zones']) : k;
+            onPanels({ fleet: ks.has('fleet'), legend: ks.has('legend') }); if (ks.has('zones') !== zones) store.getState().toggleLayer('zones');
+          }}>
+            <Dropdown.SectionHeader className="vm-head">Show</Dropdown.SectionHeader>
+            <Dropdown.Item id="fleet" selectionIndicator="toggle" addon={String(count)}>Fleet list</Dropdown.Item>
+            <Dropdown.Item id="legend" selectionIndicator="toggle">Map key</Dropdown.Item>
+            <Dropdown.Item id="zones" selectionIndicator="toggle">Zones</Dropdown.Item>
+          </Dropdown.Section>
+        </Dropdown.Menu>
+      </Dropdown.Popover>
+    </Dropdown.Root>
+    <ButtonUtility size="sm" color="secondary" icon={Home01} tooltip="Home (whole floor)" onPress={() => handle.engine?.home()} />
   </div>;
 }
 
@@ -43,7 +73,7 @@ export function FleetList() {
   const all = Object.values(robots).filter((r) => fleetId === 'all' || r.fleetId === fleetId).filter((r) => !q || r.id.toLowerCase().includes(q.toLowerCase()));
   const counts = ORDER.map((s) => [s, all.filter((r) => r.state === s).length] as const).filter(([, n]) => n);
   const list = all.filter((r) => !f || r.state === f).sort((a, b) => a.id.localeCompare(b.id));
-  return <div className="float fleet">
+  return <div className="fleet">
     <header><span>Fleet</span><Badge size="sm" color="gray">{all.length} robots</Badge></header>
     <div className="counts">{counts.map(([s, n]) => <button key={s} className={'cnt' + (f === s ? ' on' : '')} aria-pressed={f === s} onClick={() => setF(f === s ? null : s)}><BadgeWithDot size="sm" color={STATE_TONE[s]}>{n} {s}</BadgeWithDot></button>)}</div>
     <div className="rlist">{list.map((r) => <button key={r.id} className={'ritem' + (sel === r.id ? ' sel' : '')} onClick={() => handle.engine?.focusRobot(r.id)}>

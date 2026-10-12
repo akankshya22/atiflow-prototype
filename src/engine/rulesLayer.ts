@@ -13,7 +13,7 @@ export class RulesLayer {
   readonly root = new THREE.Group(); readonly hits: THREE.Mesh[] = [];
   private laneGroups = new Map<string, THREE.Object3D[]>(); private tz = new Map<string, { fill: THREE.Mesh; edge: THREE.LineLoop; label: ReturnType<typeof liveLabel>; center: THREE.Vector3 }>();
   private stations = new Map<string, { group: THREE.Group; ring: THREE.Mesh; halo: THREE.Mesh; label: THREE.Sprite; pos: THREE.Vector3; type: StationType }>();
-  private fzLabels: THREE.Sprite[] = []; private traffic: Record<string, TrafficZoneState> = {}; private selected: string | null = null;
+  private fzLabels: THREE.Sprite[] = []; private zoneObjs: THREE.Object3D[] = []; private zonesOn = true; private traffic: Record<string, TrafficZoneState> = {}; private selected: string | null = null;
   readonly stationPos = new Map<string, THREE.Vector3>();
 
   constructor(parent: THREE.Object3D, private site: SiteLayout, private nav: NavGraph) {
@@ -48,7 +48,7 @@ export class RulesLayer {
       const edge = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(z.polygon.map(([x, y]) => new THREE.Vector3(...toScene(x, y, 0.11)))), new THREE.LineBasicMaterial({ color: '#f59e0b' }));
       const cx = z.polygon.reduce((a, p) => a + p[0], 0) / z.polygon.length, cy = z.polygon.reduce((a, p) => a + p[1], 0) / z.polygon.length;
       const label = liveLabel(300, 80); label.sprite.position.set(...toScene(cx, cy, 2.6)); label.sprite.scale.set(3.6, 3.6 / label.sprite.userData.aspect, 1); label.set(z.id);
-      this.root.add(fill, edge, label.sprite); this.tz.set(z.id, { fill, edge, label, center: new THREE.Vector3(...toScene(cx, cy, 0)) });
+      this.root.add(fill, edge, label.sprite); this.zoneObjs.push(fill, edge); this.tz.set(z.id, { fill, edge, label, center: new THREE.Vector3(...toScene(cx, cy, 0)) });
     }
   }
 
@@ -59,11 +59,11 @@ export class RulesLayer {
       const t = tex.clone(); t.needsUpdate = true; t.repeat.set((x1 - x0) / 2, (y1 - y0) / 2);
       const fill = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, y1 - y0), new THREE.MeshBasicMaterial({ map: t, transparent: true, opacity: 0.85, depthWrite: false })); fill.rotation.x = -Math.PI / 2; fill.position.set(...toScene((x0 + x1) / 2, (y0 + y1) / 2, 0.1));
       const edge = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(z.polygon.map(([x, y]) => new THREE.Vector3(...toScene(x, y, 0.12)))), new THREE.LineBasicMaterial({ color: '#ef4444' }));
-      this.root.add(fill, edge);
+      this.root.add(fill, edge); this.zoneObjs.push(fill, edge);
       for (let i = 0; i < 4; i++) {   // low translucent barrier so the zone reads in 3D
         const a = z.polygon[i], b = z.polygon[(i + 1) % 4]; const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
         const w = new THREE.Mesh(new THREE.BoxGeometry(len, 0.9, 0.08), new THREE.MeshBasicMaterial({ color: '#ef4444', transparent: true, opacity: 0.28, depthWrite: false }));
-        w.position.set(...toScene((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0.45)); w.rotation.y = Math.atan2(b[1] - a[1], b[0] - a[0]); this.root.add(w);
+        w.position.set(...toScene((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, 0.45)); w.rotation.y = Math.atan2(b[1] - a[1], b[0] - a[0]); this.root.add(w); this.zoneObjs.push(w);
       }
       const lb = liveLabel(560, 80); lb.set(`NO-GO · ${z.name}`, 'rgba(185,28,28,.92)'); lb.sprite.position.set(...toScene((x0 + x1) / 2, (y0 + y1) / 2, 2.2)); lb.sprite.scale.set(7, 7 / lb.sprite.userData.aspect, 1); this.root.add(lb.sprite); this.fzLabels.push(lb.sprite);
     }
@@ -83,6 +83,8 @@ export class RulesLayer {
     }
   }
 
+  /** "Zones" layer: traffic + forbidden zones (fills, edges, barriers, labels). */
+  setZonesVisible(on: boolean) { this.zonesOn = on; this.zoneObjs.forEach((o) => (o.visible = on)); }
   setTraffic(t: Record<string, TrafficZoneState>) { this.traffic = t; }
   setSelected(id: string | null) { this.selected = id; this.stations.forEach((s, k) => { s.halo.visible = k === id; }); }
   setFleet(fleetId: string) {
@@ -96,7 +98,7 @@ export class RulesLayer {
       const mat = o.fill.material as THREE.MeshBasicMaterial, em = o.edge.material as THREE.LineBasicMaterial; const pulse = 0.5 + 0.5 * Math.sin(time * 6);
       const color = over ? '#d946ef' : wait ? '#ef4444' : occ ? '#f97316' : '#f59e0b'; mat.color.set(color); em.color.set(color);
       mat.opacity = over ? 0.6 : wait ? 0.35 + 0.2 * pulse : occ ? 0.38 : 0.14;
-      const d = camera.position.distanceTo(o.center); o.label.sprite.visible = occ > 0 || wait > 0 || d < 75;
+      const d = camera.position.distanceTo(o.center); o.label.sprite.visible = this.zonesOn && (occ > 0 || wait > 0 || d < 75);
       const cap = st?.zone.capacity ?? 1; o.label.set(wait ? `${id} · ${occ}/${cap} · ${wait} waiting` : occ ? `${id} · ${occ}/${cap} occupied` : `${id} · free`, over ? 'rgba(162,28,175,.92)' : wait ? 'rgba(185,28,28,.92)' : occ ? 'rgba(194,65,12,.92)' : 'rgba(15,27,36,.82)');
       const k = THREE.MathUtils.clamp(d * 0.022, 2.4, 9); o.label.sprite.scale.set(k * 1.45, (k * 1.45) / o.label.sprite.userData.aspect, 1);
     });
@@ -105,7 +107,7 @@ export class RulesLayer {
       s.label.visible = sel || d < 130; s.label.scale.set(k * 1.7 * s.label.userData.aspect * 0.5, k * 0.85, 1);
       s.ring.scale.setScalar(sel ? 1.25 + 0.15 * Math.sin(time * 4) : 1); if (sel) s.halo.scale.setScalar(1 + 0.1 * Math.sin(time * 4));
     });
-    this.fzLabels.forEach((l) => { l.visible = camera.position.distanceTo(l.position) < 140; });
+    this.fzLabels.forEach((l) => { l.visible = this.zonesOn && camera.position.distanceTo(l.position) < 140; });
   }
   pick(ray: THREE.Raycaster): string | null { const h = ray.intersectObjects(this.hits.filter((m) => m.parent?.visible), false)[0]; return h ? (h.object.userData.stationId as string) : null; }
 }
