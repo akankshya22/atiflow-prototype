@@ -5,6 +5,7 @@ import { LiveFloorPage } from '@/features/live-floor/LiveFloorPage';
 import { DeviceDetailPage } from '@/features/devices/DeviceDetailPage';
 import { DeviceListPage } from '@/features/devices/DeviceListPage';
 import { KINDS } from '@/features/devices/model/kinds';
+import { MasterDataPage } from '@/features/master-data/MasterDataPage';
 import { WorkflowBuilderPage } from '@/features/workflow-builder/WorkflowBuilderPage';
 import { AppToaster } from '@/ui/toast';
 import { RequireRole } from './guards';
@@ -26,6 +27,7 @@ export function AppRoot() {
         <Route path="/login" element={<LoginRoute />} />
         <Route path="/live" element={<RequireRole role="supervisor"><LiveFloorPage /></RequireRole>} />
         <Route path="/configurator" element={<RequireRole role="configurator"><WorkflowBuilderPage /></RequireRole>} />
+        <Route path="/configurator/master-data" element={<RequireRole role="configurator"><MasterDataPage /></RequireRole>} />
         {(['robot', 'hardware'] as const).map((k) => (
           <Route key={k} path={`/configurator/${KINDS[k].route}`}>
             <Route index element={<RequireRole role="configurator"><DeviceListPage kind={KINDS[k]} /></RequireRole>} />
