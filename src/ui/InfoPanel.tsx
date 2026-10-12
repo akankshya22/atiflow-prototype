@@ -16,6 +16,8 @@ export interface InfoPanelProps {
   stats?: InfoStat[]; alerts?: InfoAlert[];
   actions?: { label: string; onClick: () => void; disabled?: boolean }[];
   onClose: () => void; children?: ReactNode;
+  /** Content between the pills and the stat grid (e.g. a hero picture or the current action). */
+  lead?: ReactNode;
 }
 
 /** The one popup card used for robots AND stations (and anything selectable later). Built on Untitled UI Badge / Button / ProgressBar. */
@@ -30,7 +32,7 @@ function SheetHandle({ onClose }: { onClose: () => void }) {
     onPointerCancel={(e) => { y0.current = null; const el = panel(e); el.style.transition = ''; el.style.transform = ''; }}><i /></div>;
 }
 
-export function InfoPanel({ title, subtitle, pill, chips, stats, alerts, actions, onClose, children }: InfoPanelProps) {
+export function InfoPanel({ title, subtitle, pill, chips, stats, alerts, actions, onClose, children, lead }: InfoPanelProps) {
   return (
     <div className="float rpanel">
       <SheetHandle onClose={onClose} />
@@ -40,6 +42,7 @@ export function InfoPanel({ title, subtitle, pill, chips, stats, alerts, actions
         {pill && <BadgeWithDot size="sm" color={pill.tone} className="capitalize">{pill.label}</BadgeWithDot>}
         {chips?.map((c) => <Badge key={c.label} size="sm" color="gray"><i className="dot" style={{ background: c.color, width: 6, height: 6, marginRight: 5 }} />{c.label}</Badge>)}
       </div>
+      {lead}
       {stats && <div className="kv">{stats.map((s) => <div key={s.label}><small>{s.label}</small><b>{s.value}</b>{s.bar && <ProgressBar className="mt-1 h-1.5" progressClassName={BAR_CLASS[s.bar.tone]} value={s.bar.pct} />}</div>)}</div>}
       {children}
       {alerts?.map((a, i) => <div className={'alert ' + a.severity} key={i}>{a.severity === 'info' ? 'ℹ' : '⚠'} {a.text}</div>)}

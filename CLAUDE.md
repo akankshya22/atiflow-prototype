@@ -2,7 +2,7 @@
 
 Read this first. It is the source of truth for how the system is designed. Update it when a decision changes.
 
-**Status (updated): the app is now multi-page and role based (sections 20-22): login -> Live Floor (supervisor) or the configurator (Workflow Builder, Master Data, Robots, Hardware). Project/folder name: Ati Flow Prototype. Older sections that mention `src/ui/App.tsx`, `src/ui/Sidebar.tsx` or `src/ui/Topbar.tsx` describe code that moved (see section 20 for the new locations).** Build steps 1-6 of section 8 plus the map-rules system (section 12) are implemented and verified in the browser (see section 11 for exact state, gaps and how to run). Step 7 (WebSocket adapter + onboarding docs) is not done. Items marked **[OPEN]** still await confirmation.
+**Status (updated): the app is now multi-page and role based (sections 20-22): login -> supervisor Live view + Fleets (section 24) or the configurator (Workflow Builder, Master Data, Robots, Hardware). Project/folder name: Ati Flow Prototype. Older sections that mention `src/ui/App.tsx`, `src/ui/Sidebar.tsx` or `src/ui/Topbar.tsx` describe code that moved (see section 20 for the new locations).** Build steps 1-6 of section 8 plus the map-rules system (section 12) are implemented and verified in the browser (see section 11 for exact state, gaps and how to run). Step 7 (WebSocket adapter + onboarding docs) is not done. Items marked **[OPEN]** still await confirmation.
 
 ## 1. What we are building
 
@@ -320,17 +320,17 @@ src/
   app/            AppRoot.tsx (route table), guards.tsx (RequireRole), roles.ts (role -> landing route + sidebar label)
   features/
     auth/         types.ts, users.ts (THE user directory), authService.ts (pure authenticate/findUser), authStore.ts (session), LoginPage.tsx, login.css, assets/, avatars/
-    live-floor/   LiveFloorPage.tsx (the 3D page, content only), liveNav.ts (sidebar data + search for supervisors)
+    supervisor/   LiveViewPage.tsx, FleetsPage.tsx, supervisorNav.ts (section 24)
     workflow-builder/   (section 21)
   shell/          AppShell.tsx (sidebar + topbar + mobile drawer), Sidebar.tsx (data driven), Topbar.tsx (generic), UserMenu.tsx (avatar menu with Log out), types.ts
   ui/ core/ engine/ adapters/   shared UI pieces, Live Floor core/engine/simulator (unchanged)
 ```
-**Routes (react-router-dom, BrowserRouter):** `/login` (public), `/live` (role `supervisor`), `/configurator` (role `configurator`), everything else redirects (`/` -> signed-in user's home or `/login`). `RequireRole` sends signed-out users to `/login` and users of another role to their own home, so roles never see each other's pages. A production host needs an SPA fallback (serve index.html for unknown paths); the Vite dev server already does.
+**Routes (react-router-dom, BrowserRouter):** `/login` (public), `/live` + `/live/fleets` (role `supervisor`, section 24), `/configurator` (role `configurator`), everything else redirects (`/` -> signed-in user's home or `/login`). `RequireRole` sends signed-out users to `/login` and users of another role to their own home, so roles never see each other's pages. A production host needs an SPA fallback (serve index.html for unknown paths); the Vite dev server already does.
 
 **Accounts (prototype, plain text on purpose, no encryption was requested):** edit `src/features/auth/users.ts`.
 | username | password | role | lands on | avatar |
 |---|---|---|---|---|
-| arjun | 1234 | supervisor | /live (Live Floor) | blue-turban illustration |
+| arjun | 1234 | supervisor | /live (Live view, section 24) | blue-turban illustration |
 | kavin | 1234 | configurator | /configurator (Workflow Builder) | headset illustration (first image the user sent) |
 | meera | 1234 | configurator | /configurator | saree illustration (second image the user sent) |
 Usernames are case-insensitive. Session = username only; "Keep me signed in" ticked -> `localStorage['atiflow.session']`, unticked -> `sessionStorage` (cleared when the browser closes). Log out: click the avatar block at the bottom of the sidebar -> menu -> Log out (clears the session, goes to /login). Swap `authService.authenticate` for an API call later; callers only use its result.
@@ -389,3 +389,20 @@ src/features/master-data/
 - **Manual**: name + code (+ group, unit), required + unique code -> toast "New Material Added".
 - List: Materials | Staging Area tabs, Materials | Station Goods sub-tabs, info line, search + Group + Unit filters, newest batch first, row pencil = Edit material (code read-only). **No delete** (annotation: materials may already be used in workflows).
 **Decisions / assumptions (not in Figma, please correct):** list starts empty; Staging Area and Station Goods are placeholders; CSV steps are "1 of 2 / 2 of 2" (Figma says 1 of 3 and 3 of 3 with no step 2) and the flow is CSV only, so an .xlsx upload shows the unsupported state (Figma mixes "CSV/XLSX" and "CSV only"); the API catalog is ~155 mock rows, not 1,28,872; group and unit were added to the manual form so the table columns are filled; the list table has no row checkboxes (no bulk action is designed); the Figma 04 frame's Fleet column is not shown (06 uses Last Updated); toasts after API create / manual add / edit reuse `notify`. Materials are saved per browser and are not yet offered in the Workflow Builder's material field. Tests: `tests/master-data.test.ts` (62 total passing).
+
+## 24. Supervisor: Live view + Fleets (ported from the user's "AtiFlow Live View" zip; theme and page layout stay ours)
+
+**Sign in as `arjun` / `1234`** (role `supervisor`) -> `/live`. Sidebar (Operations): **Live view** (`/live`), then **Fleets** (`/live/fleets`); highlight follows the URL. Notifications badge = Sherpas in error. Top-bar search finds Sherpas (select), zones and stations (map flies there) from either page.
+**This replaced the old supervisor Live Floor page** (`features/live-floor/LiveFloorPage.tsx` + `liveNav.ts` were deleted on the user's request to "import this entire live map"). The old DWG-based engine (`src/engine`, `src/core`, `src/adapters`, `src/ui/Panels.tsx`) is no longer routed but is kept because its tests (lanes, rules, sim) still run; delete it when nobody needs it.
+```
+src/features/supervisor/
+  model/data.ts      map frame (drawing units, 1 u = 0.628 m), MODELS (Sherpa 10K / XT Lite), FLEETS (Line Side, Logistics), STATUS (label, map colour, badge tone), ZONE_TYPES, STATIONS, BASE_ZONES, ROBOTS (mission loops with stops)
+  model/sim.ts       FleetSim (pure): loops, dwell at stops, slow / no-go / traffic zones, yielding with give-way timeout, pause fleet, pause one, clear error, location + leg progress
+  model/store.ts     zustand UI state (selection, follow, fleet filter, view mode, sim speed, panel, layers, zones + per-type visibility, drawing, focus requests) + the shared `sim` and `useLiveSim()` (runs the sim while a supervisor page is mounted). Persisted per browser under `atiflow.live.*` (mode, speed, layers, CAD opacity, zone visibility, zones you drew).
+  engine/LiveMap.ts  Three.js only: CAD floor texture, lazy LiDAR point clouds (`public/supervisor/pointclouds.json`, 2.7 MB, fetched when a point-cloud layer is switched on), pillars / clean-room glass / walls, production lines, zones, stations, procedural Sherpas + tow carts, dashed routes, DOM labels, 2D / 2.5D / 3D cameras, pick, follow, zone drawing
+  components/        MapOverlays (toolbar, Sherpa list + Activity, Layers, Zones + "Define a zone", draw banner, legend, speed / compass / zoom), SherpaDetails (the shared InfoPanel card, new `lead` slot), bits (thumb, status badge, battery)
+  LiveViewPage.tsx, FleetsPage.tsx, supervisorNav.ts, live-view.css (prefix lv-), assets/ (map.webp, Sherpa pictures)
+```
+**Design mapping:** the zip's own dark sidebar/top bar/glass panels were replaced by our AppShell, title block, `.builder` card with `.bh` header ("ECC layout · Floor 0", Live badge, status chips, `Fleet -` select), white `.float` overlays and Untitled UI (ButtonGroup, Tabs, Toggle, Select, Input, Badge, Table, ProgressBar, InfoPanel, ZoomBar, toasts). The map viewport itself keeps the zip's dark 3D look. Dropped from the zip: its light/dark theme toggle (the app has no dark mode).
+**Three upgrade note:** the zip used three r147; we run r165, so light intensities are multiplied by PI and textures are tagged sRGB to keep the same look.
+**Decisions / assumptions (please correct):** existing supervisor account kept (arjun / 1234, no new login added); "Create new fleet" on Fleets shows an info toast; "paused by <name>" uses the signed-in user's name; data is the zip's mock (7 Sherpas), independent of the configurator's robots. Tests: `tests/supervisor.test.ts` (68 total passing).

@@ -1,11 +1,12 @@
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/authStore';
 import { LoginPage } from '@/features/auth/LoginPage';
-import { LiveFloorPage } from '@/features/live-floor/LiveFloorPage';
 import { DeviceDetailPage } from '@/features/devices/DeviceDetailPage';
 import { DeviceListPage } from '@/features/devices/DeviceListPage';
 import { KINDS } from '@/features/devices/model/kinds';
 import { MasterDataPage } from '@/features/master-data/MasterDataPage';
+import { FleetsPage } from '@/features/supervisor/FleetsPage';
+import { LiveViewPage } from '@/features/supervisor/LiveViewPage';
 import { WorkflowBuilderPage } from '@/features/workflow-builder/WorkflowBuilderPage';
 import { AppToaster } from '@/ui/toast';
 import { RequireRole } from './guards';
@@ -25,7 +26,8 @@ export function AppRoot() {
       <AppToaster />
       <Routes>
         <Route path="/login" element={<LoginRoute />} />
-        <Route path="/live" element={<RequireRole role="supervisor"><LiveFloorPage /></RequireRole>} />
+        <Route path="/live" element={<RequireRole role="supervisor"><LiveViewPage /></RequireRole>} />
+        <Route path="/live/fleets" element={<RequireRole role="supervisor"><FleetsPage /></RequireRole>} />
         <Route path="/configurator" element={<RequireRole role="configurator"><WorkflowBuilderPage /></RequireRole>} />
         <Route path="/configurator/master-data" element={<RequireRole role="configurator"><MasterDataPage /></RequireRole>} />
         {(['robot', 'hardware'] as const).map((k) => (
