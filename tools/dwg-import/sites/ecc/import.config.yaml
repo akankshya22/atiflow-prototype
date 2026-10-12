@@ -1,0 +1,51 @@
+# Per-site DWG import config. Coordinates in DWG units (mm for this file).
+siteId: ecc
+name: AMR ECC Plant
+dxf: layout.dxf            # produced by: dwg2dxf -y -o layout.dxf "AMR ECC layout.dwg"
+scale: 0.001               # DWG unit -> meters
+crop: [474000, 145000, 550000, 292000]     # minX, minY, maxX, maxY: the factory floor only (the rest of the DWG is other buildings/empty hall)
+detail: [476000, 146000, 552000, 290000]   # region where equipment is clustered in detail (robot hall)
+floors:                    # floor slabs (DWG coords), everything else is ground
+  - [476500, 147500, 546500, 289500]
+shell: {h: 3.2, t: 0.3}      # perimeter walls around each floor rect
+walls:                     # layer -> {height, thickness} (meters)
+  "WALL":                       {h: 3.0, t: 0.20}
+  "A-WALL":                     {h: 3.0, t: 0.20}
+  "50 MM EXTERNAL PILLAR":      {h: 3.4, t: 0.20}
+  "FAB WALL PANEL-50THK PUFF":  {h: 2.8, t: 0.10}
+  "Fab - View Panel For 50mm":  {h: 2.8, t: 0.08}
+  "FAB 4.0 mtr  WALL PANEL-80THK ROCKWOOL": {h: 4.0, t: 0.10}
+  "FAB 4.8 mtr  WALL PANEL-80THK ROCKWOOL": {h: 4.8, t: 0.10}
+equipment:                 # layers rasterised inside `detail` and clustered into boxes
+  "LAYER01": {kind: smt-machine, h: 1.5}
+  "EEC":     {kind: equipment,   h: 1.2}
+  "EEC-1":   {kind: equipment,   h: 1.0}
+  "AM_6":    {kind: equipment,   h: 1.2}
+  "AM_8":    {kind: equipment,   h: 1.2}
+  "A-EQUIP": {kind: equipment,   h: 1.4}
+  "0":       {kind: workstation, h: 0.9, close: 1, fill: false}
+cell: 100                  # raster cell (DWG units)
+close: 3                   # cells of dilation to join nearby strokes
+minArea: 0.25
+maxArea: 450               # m^2, larger closed outlines are treated as enclosures and skipped              # m^2, smaller footprints dropped
+labelLayers: [EEC, EEC-1, A-EQUIP]
+labelPatterns: ["SMT", "ASRS", "WIP", "PREPARATION", "REPAIR", "STORE", "AMR", "GANGWAY"]
+zones:                     # active = robots operate here (clickable). Rects in DWG coords.
+  - {id: smt-lines,   name: SMT Lines,            kind: production, active: true,  rect: [477000, 148000, 533000, 185500], color: "#5eead4"}
+  - {id: assembly,    name: Assembly Workstations, kind: production, active: true,  rect: [477000, 185500, 533000, 225000], color: "#93c5fd"}
+  - {id: asrs-prep,   name: ASRS & Preparation,   kind: storage,    active: true,  rect: [477000, 225000, 546000, 289000], color: "#fcd34d"}
+  - {id: east-strip,  name: East Logistics Strip, kind: logistics,  active: true,  rect: [533000, 148000, 546000, 225000], color: "#c4b5fd"}
+
+# ---- fleet / traffic rules (SAMPLE data for the ECC demo: replace with the client's real map rules) ----
+fleets:                    # each fleet may only drive inside its areas; an area listed by two fleets is a shared map area
+  - {id: line-side, name: Line Side Fleet,    color: "#14b8a6", areas: [smt-lines, assembly, east-strip]}
+  - {id: asrs,      name: ASRS Shuttle Fleet, color: "#f59e0b", areas: [asrs-prep, east-strip]}
+forbidden:                 # robots never enter (DWG coords). Lanes/stations are removed from these areas.
+  - {id: fz-01, name: Quarantine Cage,       reason: Quality hold, no AMR access, rect: [478000, 276000, 486000, 286000]}
+  - {id: fz-02, name: Chemical Store,        reason: Hazardous materials,       rect: [537000, 276000, 545000, 286000]}
+  - {id: fz-03, name: Fire Exit Clearance,   reason: Keep exit path clear,      rect: [540000, 149000, 546000, 158000]}
+lanes:
+  offset: 0.5              # meters from lane centre-line; lanes are paired (one per direction), keep-right
+  clearance: 0.55          # minimum free distance to obstacles for a lane centre-line
+  spurMax: 30              # longest dead-end lane to a station
+  traffic: {count: 14, size: 3.4, minSeparation: 9}    # sample traffic zones at junctions (capacity 1)
